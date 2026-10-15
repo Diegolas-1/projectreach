@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts/xbox'))
@@ -91,48 +92,88 @@ int main(void) {
             subprocess.run([str(path / 'test')], check=True)
 
 
-DELTA = '''#define DELTA_LEGACY_VERSIONS(X) \\
-\tX(11, "build-76", breaking) /* settings */ \\
-\tX(23, "build-147", additive) /* maps */ \\
-\tX(24, "build-149", additive) /* vehicles */ \\
-\tX(25, "build-170", additive) /* new */
-
-#define DELTA_OTHER X(26, "build-180", breaking)
-'''
-
-
 class DecisionTests(unittest.TestCase):
-    def test_classification_reads_only_the_table(self):
-        self.assertEqual(policy.classification(DELTA), {11: 'breaking', 23: 'additive', 24: 'additive', 25: 'additive'})
-        self.assertEqual(policy.network_version(b'#define HALO_PORT_NETWORK_VERSION 24\n'), 24)
-        with self.assertRaises(policy.PolicyError):
-            policy.network_version(b'#define HALO_PORT_NETWORK_VERSION 24\n#define HALO_PORT_NETWORK_VERSION 25\n')
+    def test_network_version_requires_one_integer(self):
+        self.assertEqual(policy.network_version(b'#define HALO_PORT_NETWORK_VERSION 29\n'), 29)
+        for bad in (b'#define HALO_PORT_NETWORK_VERSION 24\n#define HALO_PORT_NETWORK_VERSION 25\n',
+                    b'#define HALO_PORT_NETWORK_VERSION 0\n'):
+            with self.assertRaises(policy.PolicyError):
+                policy.network_version(bad)
 
-    def test_decisions(self):
-        kinds = policy.classification(DELTA)
-        self.assertEqual(policy.decide(24, 24, kinds), (policy.exact(24), 'current'))
-        self.assertEqual(policy.decide(24, 25, kinds, upstream_tag='build-170'),
-                         ({'announce': 25, 'minimum': 24, 'maximum': 25, 'follows': 'build-170'}, 'following'))
-        previous = {'announce': 25, 'minimum': 24, 'maximum': 25}
-        # 26 is unclassified in the table (DELTA_OTHER is not the table): keep the last approval
-        self.assertEqual(policy.decide(24, 26, kinds, previous), (previous, 'waiting'))
-        self.assertEqual(policy.decide(24, 26, {**kinds, 26: 'breaking'}, previous), (previous, 'needs-release'))
-        self.assertEqual(policy.decide(24, 26, kinds, previous, approved_through=26)[1], 'following')
-        self.assertEqual(policy.decide(10, 12, kinds), (policy.exact(10), 'needs-release'))
+    def test_no_unreviewed_transition_is_enabled(self):
+        self.assertEqual(policy.REVIEWED_TRANSITIONS, frozenset())
+        for engine in (24, 25, 26, 27, 28, 29):
+            self.assertEqual(policy.decide(engine, engine), (policy.exact(engine), 'current'))
+            self.assertEqual(policy.decide(engine, 29)[0], policy.exact(engine))
+        self.assertEqual(policy.decide(25, 27)[1], 'waiting')
+        self.assertEqual(policy.decide(25, 29)[1], 'needs-release')
+        self.assertEqual(policy.decide(27, 28)[1], 'needs-release')
+        self.assertEqual(policy.decide(29, 30)[1], 'waiting')
+
+    def test_recompute_withdraws_published_unsafe_ranges(self):
+        previous = {'announce': 29, 'minimum': 24, 'maximum': 29, 'follows': 'build-206'}
+        self.assertEqual(policy.decide(25, 29, previous), (policy.exact(25), 'needs-release'))
+        self.assertEqual(policy.decide(25, 27, previous), (policy.exact(25), 'waiting'))
+        self.assertEqual(policy.decide(29, 30, previous), (policy.exact(29), 'waiting'))
+        self.assertEqual(policy.decide(29, 29, previous), (policy.exact(29), 'current'))
+
+    def test_reviewed_transitions_stop_at_unknown_or_breaking(self):
+        # A synthetic local review, not an actual 24/25 compatibility approval.
+        with mock.patch.object(policy, 'REVIEWED_TRANSITIONS', frozenset({25})):
+            previous = {'announce': 25, 'minimum': 24, 'maximum': 25, 'follows': 'build-170'}
+            self.assertEqual(policy.decide(24, 25, upstream_tag='build-170'), (previous, 'following'))
+            self.assertEqual(policy.decide(24, 26, previous), (previous, 'waiting'))
+            self.assertEqual(policy.decide(24, 29, previous), (previous, 'needs-release'))
+        with mock.patch.object(policy, 'REVIEWED_TRANSITIONS', frozenset({26, 27, 28, 29})):
+            self.assertEqual(policy.decide(25, 29),
+                             ({'announce': 27, 'minimum': 25, 'maximum': 27}, 'needs-release'))
+            self.assertEqual(policy.decide(28, 29), (policy.exact(28), 'needs-release'))
 
     def test_plan_is_stable_monotonic_and_withdrawable(self):
-        kinds = policy.classification(DELTA)
-        document, report = policy.plan(None, {24}, 25, 'build-170', kinds, now=1000)
-        first = json.loads(document)
-        self.assertEqual(first['serial'], 1000)
-        self.assertEqual(report['engines']['24']['status'], 'following')
-        self.assertEqual(policy.plan(first, {24}, 25, 'build-171', kinds, now=2000)[0], None)  # rows unchanged
-        withdrawn = json.loads(policy.plan(first, {24}, 25, 'build-170', kinds, mode='exact', now=900)[0])
-        self.assertEqual(withdrawn['serial'], 1001)
-        self.assertEqual(withdrawn['engines']['24'], policy.exact(24))
-        # an older engine's row is kept while a newer engine is added
-        both = json.loads(policy.plan(first, {25}, 25, 'build-170', kinds, now=3000)[0])
-        self.assertEqual(set(both['engines']), {'24', '25'})
+        old = {'format': 1, 'serial': 1000, 'engines': {
+            '24': {'announce': 29, 'minimum': 24, 'maximum': 29, 'follows': 'build-206'},
+            '25': {'announce': 29, 'minimum': 25, 'maximum': 29, 'follows': 'build-206'}}}
+        document, report = policy.plan(old, {29}, 29, 'build-206', now=900)
+        corrected = json.loads(document)
+        self.assertEqual(corrected['serial'], 1001)
+        self.assertEqual(corrected['engines'], {str(v): policy.exact(v) for v in (24, 25, 29)})
+        self.assertTrue(report['engines']['24']['withdrawn'])
+        self.assertTrue(report['engines']['25']['withdrawn'])
+        self.assertNotIn('withdrawn', report['engines']['29'])
+        self.assertEqual(policy.plan(corrected, {29}, 29, 'build-207', now=2000)[0], None)
+        self.assertEqual(policy.plan(corrected, {29}, 30, 'build-210', now=3000)[0], None)
+        exact_document, exact_report = policy.plan(old, {29}, 29, 'build-206', mode='exact', now=900)
+        self.assertEqual(json.loads(exact_document)['engines'], corrected['engines'])
+        self.assertEqual(exact_report['engines']['25']['status'], 'withdrawn')
+
+    def test_gather_uses_only_pinned_opence_sources(self):
+        def api(path):
+            if path.endswith('/releases/latest'):
+                return {'tag_name': 'build-206'}
+            if '/commits?' in path:
+                return [{'commit': {'committer': {'date': '2026-10-14T10:08:39Z'}}}]
+            return {'sha': 'a' * 40}
+        with mock.patch.object(policy, 'api', side_effect=api) as get, \
+                mock.patch.object(policy, 'raw', return_value=b'#define HALO_PORT_NETWORK_VERSION 29\n') as raw:
+            result = policy.gather()
+        self.assertEqual(result['upstream'], 29)
+        self.assertTrue(all(call.args[0].startswith('repos/' + policy.OPENCE + '/') for call in get.call_args_list))
+        self.assertTrue(all(call.args[0] == policy.OPENCE for call in raw.call_args_list))
+        self.assertEqual(raw.call_args_list[0].args[1], 'a' * 40)
+
+    def test_notify_is_summary_only_even_when_attention_is_required(self):
+        report = {'upstream': {'release': 'build-206', 'network_version': 29}, 'engines': {
+            '25': {'status': 'needs-release', 'withdrawn': True, **policy.exact(25)}},
+            'changed': True, 'attention': True}
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.dict('os.environ', {'GITHUB_STEP_SUMMARY': str(pathlib.Path(tmp) / 'summary.md')}), \
+                mock.patch.object(policy.subprocess, 'run') as run, \
+                mock.patch.object(policy.subprocess, 'check_output') as output, \
+                mock.patch('builtins.print'):
+            policy.notify(report)
+            self.assertIn('unsafe widening withdrawn', (pathlib.Path(tmp) / 'summary.md').read_text())
+        run.assert_not_called()
+        output.assert_not_called()
 
     def test_document_checks(self):
         good = {'format': 1, 'serial': 5, 'engines': {'24': policy.exact(24)}}
@@ -168,10 +209,10 @@ class SignatureTests(unittest.TestCase):
     def test_round_trip_and_tampering(self):
         with tempfile.TemporaryDirectory() as tmp:
             key = test_key(tmp)
-            document, _ = policy.plan(None, {24}, 25, 'build-170', policy.classification(DELTA), now=1000)
+            document, _ = policy.plan(None, {25}, 29, 'build-206', now=1000)
             envelope = policy.sign(document, key)
             public = policy.public_key_of(key)
-            self.assertEqual(policy.verify(envelope, public)['engines']['24']['announce'], 25)
+            self.assertEqual(policy.verify(envelope, public)['engines']['25']['announce'], 25)
             outer = json.loads(envelope)
             outer['document'] = base64.b64encode(document.replace(b'25', b'26')).decode()
             with self.assertRaisesRegex(policy.PolicyError, 'does not verify'):
@@ -191,9 +232,12 @@ class SignatureTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = pathlib.Path(tmp)
             key = test_key(tmp)
-            kinds = policy.classification(DELTA)
-            first, _ = policy.plan(None, {24}, 25, 'build-170', kinds, now=1000)
-            newer, _ = policy.plan(json.loads(first), {24}, 25, 'build-170', kinds, mode='exact', now=1000)
+            # Validly signed historical policy: a new binary must not apply its widening.
+            first = policy.render({'format': 1, 'serial': 1000, 'engines': {
+                '24': {'announce': 25, 'minimum': 24, 'maximum': 25, 'follows': 'build-170'},
+                '25': {'announce': 29, 'minimum': 25, 'maximum': 29, 'follows': 'build-206'},
+                '29': {'announce': 30, 'minimum': 25, 'maximum': 30, 'follows': 'build-210'}}})
+            newer, _ = policy.plan(json.loads(first), {29}, 29, 'build-206', mode='exact', now=1000)
             (path / 'first.json').write_bytes(policy.sign(first, key))
             (path / 'newer.json').write_bytes(policy.sign(newer, key))
             outer = json.loads((path / 'first.json').read_text())
@@ -217,9 +261,16 @@ int main(void) { @autoreleasepool {
     NSData *key = [NSData dataWithBytes:bytes length:65];
     NSDictionary *first = HPNetworkPolicyRead(file("first.json"), 24, key);
     assert([first[@"serial"] isEqual:@1000]);
-    assert([first[@"row"][@"announce"] isEqual:@25] && [first[@"row"][@"minimum"] isEqual:@24] &&
-           [first[@"row"][@"maximum"] isEqual:@25] && [first[@"row"][@"follows"] isEqual:@"build-170"]);
-    assert(HPNetworkPolicyRead(file("first.json"), 25, key)[@"row"] == nil);   /* other engines: exact */
+    assert([first[@"row"][@"announce"] isEqual:@24] && [first[@"row"][@"minimum"] isEqual:@24] &&
+           [first[@"row"][@"maximum"] isEqual:@24] && [first[@"row"][@"follows"] isEqual:@""]);
+    for (unsigned int engine = 25; engine <= 29; engine += 4) {
+        NSDictionary *bounded = HPNetworkPolicyRead(file("first.json"), engine, key);
+        assert([bounded[@"serial"] isEqual:@1000]);
+        assert([bounded[@"row"][@"announce"] unsignedIntValue] == engine);
+        assert([bounded[@"row"][@"minimum"] unsignedIntValue] == engine);
+        assert([bounded[@"row"][@"maximum"] unsignedIntValue] == engine);
+    }
+    assert(HPNetworkPolicyRead(file("first.json"), 26, key)[@"row"] == nil);   /* absent engines: exact */
     assert(!HPNetworkPolicyRead(file("first.json"), 24, HPNetworkPolicyDefaultKey()));
     assert(!HPNetworkPolicyRead(file("tampered.json"), 24, key));
     assert(!HPNetworkPolicyRead(file("signed-but-narrowing.json"), 24, key));
@@ -228,13 +279,16 @@ int main(void) { @autoreleasepool {
     NSURL *cache = [NSURL fileURLWithPath:@"%DIR%/cache/network-policy.json"];
     assert(!HPNetworkPolicyStore(file("tampered.json"), 24, cache, key));
     assert(HPNetworkPolicyStore(file("first.json"), 24, cache, key));
+    NSDictionary *oldCache = HPNetworkPolicyRead([NSData dataWithContentsOfURL:cache], 29, key);
+    assert([oldCache[@"serial"] isEqual:@1000] && [oldCache[@"row"][@"announce"] isEqual:@29]);
+    assert([oldCache[@"row"][@"minimum"] isEqual:@29] && [oldCache[@"row"][@"maximum"] isEqual:@29]);
     assert(!HPNetworkPolicyStore(file("first.json"), 24, cache, key));          /* same serial */
     assert(HPNetworkPolicyStore(file("newer.json"), 24, cache, key));
     assert(!HPNetworkPolicyStore(file("first.json"), 24, cache, key));          /* never rolls back */
     NSDictionary *cached = HPNetworkPolicyRead([NSData dataWithContentsOfURL:cache], 24, key);
     assert([cached[@"serial"] isEqual:@1001] && [cached[@"row"][@"announce"] isEqual:@24]);
     assert([HPNetworkPolicySummary(24, cached) isEqual:@"Online play: OpenCE network version 24."]);
-    assert([HPNetworkPolicySummary(24, first) containsString:@"versions 24 to 25"]);
+    assert([HPNetworkPolicySummary(24, first) isEqual:@"Online play: OpenCE network version 24."]);
     assert([HPNetworkPolicySourceURL().absoluteString isEqual:HPNetworkPolicyURL]);
     setenv("HALOPAD_NETWORK_POLICY_URL", "https://evil.invalid/network-policy.json", 1);
     assert([HPNetworkPolicySourceURL().absoluteString isEqual:HPNetworkPolicyURL]);

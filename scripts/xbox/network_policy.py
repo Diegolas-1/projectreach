@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
 """Make, sign, verify and publish HaloPad's network compatibility policy.
 
-An installed HaloPad keeps its engine. OpenCE refuses hosts of any other network
-version, although each raise so far has been additive (older machines drop the
-newer messages and still play). The policy tells each HaloPad engine version which
-newer version to announce and which host versions to join, so a compatible raise
-needs no new app (port/ios/HaloPadXboxNetworkPolicy.h applies it).
+An installed HaloPad keeps its engine. A newer network number can change message
+meanings or game state: advertising it cannot add the corresponding engine code.
+Only transitions reviewed and tested on HaloPad's actual OpenCE engine may widen
+its exact-version rule. A different fork's compatibility table is not evidence
+that our unmodified protocol implementation can cross that transition.
 
-A raise is followed only when every version between the engine's and OpenCE's
-latest is classified additive by ChupathingyCE's cross-play-tested table
-(port/linux/include/delta.h, DELTA_LEGACY_VERSIONS), or approved by hand with
---approve-through. A breaking raise keeps the previous rows and is reported: that
-change needs a new HaloPad build. Nothing here builds or downloads an engine.
+REVIEWED_TRANSITIONS is deliberately empty until actual cross-version tests and
+source review justify an entry. Every update recomputes all rows, including old
+engines, so withdrawing an approval also withdraws already published widenings.
+Known breaking transitions require a new HaloPad engine; unknown ones wait for
+review. Nothing here builds or downloads an engine.
 
-    network_policy.py update [--mode follow|exact] [--approve-through N]
+    network_policy.py update [--mode follow|exact]
                              [--key KEY.pem] [--publish] [--out FILE] [--report FILE]
     network_policy.py verify FILE
-    network_policy.py notify REPORT     (GitHub Actions: summary, and an issue when attention is needed)
+    network_policy.py notify REPORT     (GitHub Actions summary only)
 
 The document is JSON; the published file is an envelope holding the document's
 exact bytes and their ECDSA P-256/SHA-256 signature (both base64). Serials only
@@ -44,14 +44,18 @@ FILE = 'network-policy.json'
 PUBLIC_KEY = ROOT / 'config/network-policy-public.pem'
 RECORD = ROOT / 'config/xbox-release.json'
 OPENCE = 'OpenCommunityEdition/OpenCE'
-CLASSIFIER = 'ChupathingyCE/chupathingyce'
 LIMITS = 'port/linux/include/halo_port_limits.h'
-DELTA = 'port/linux/include/delta.h'
 MAXIMUM_DOCUMENT = 16384
 NETWORK_VERSION = re.compile(rb'^#define HALO_PORT_NETWORK_VERSION (\d+)[ \t]*$', re.M)
-CLASSIFIED = re.compile(r'X\((\d+),\s*"(build-\d+)",\s*(additive|breaking)\)')
 TAG = re.compile(r'[A-Za-z0-9._-]{1,32}')
-# A raise unclassified this long is reported for a maintainer's decision.
+# Each entry authorizes only N-1 -> N after review of this engine and real
+# cross-version play. Simulated advertised versions and other forks do not count.
+REVIEWED_TRANSITIONS = frozenset()
+# Upstream explicitly changes shared state in 28 and map identity in 29:
+# 5a7c655a60555215864391433716ddd966ba3079 (27 machines disagree on game state)
+# 3e0ba551114819a4a0f648e829208f5d754b742b (map version becomes content hash)
+BREAKING_TRANSITIONS = frozenset({28, 29})
+# An unreviewed raise this old needs a maintainer's decision.
 WAITING_ALERT_SECONDS = 48 * 3600
 
 
@@ -68,22 +72,6 @@ def network_version(header):
     if len(found) != 1 or not 1 <= int(found[0]) <= 65535:
         raise PolicyError('halo_port_limits.h has no single network version')
     return int(found[0])
-
-
-def classification(delta):
-    """{version: 'additive' | 'breaking'} from ChupathingyCE's delta.h"""
-    start = delta.find('#define DELTA_LEGACY_VERSIONS')
-    if start < 0:
-        raise PolicyError('delta.h has no DELTA_LEGACY_VERSIONS table')
-    block = delta[start:delta.find('\n\n', start) if '\n\n' in delta[start:] else len(delta)]
-    kinds = {}
-    for number, _, kind in CLASSIFIED.findall(block):
-        if int(number) in kinds:
-            raise PolicyError(f'delta.h classifies network version {number} twice')
-        kinds[int(number)] = kind
-    if not kinds:
-        raise PolicyError('delta.h classifies no network versions')
-    return kinds
 
 
 def exact(engine):
@@ -122,35 +110,33 @@ def check_document(document):
     return policy
 
 
-def decide(engine, upstream, kinds, previous=None, approved_through=0, upstream_tag=''):
-    """(row, status) for one HaloPad engine version.
-
-    current: OpenCE has not moved past this engine; exact row.
-    following: every newer version is additive; announce and join up to upstream.
-    waiting: a newer version is not classified yet; previous row kept.
-    needs-release: a newer version is breaking; previous row kept, a new HaloPad is needed.
-    """
-    kept = previous if previous else exact(engine)
+def decide(engine, upstream, previous=None, upstream_tag=''):
+    """Recompute a bounded row; stale published approvals never grant trust."""
     if upstream <= engine:
         return exact(engine), 'current'
     newer = range(engine + 1, upstream + 1)
-    if any(kinds.get(v) == 'breaking' and v > approved_through for v in newer):
-        return kept, 'needs-release'
-    if all(v <= approved_through or kinds.get(v) == 'additive' for v in newer):
-        row = {'announce': upstream, 'minimum': engine, 'maximum': upstream}
+    status = 'needs-release' if any(v in BREAKING_TRANSITIONS for v in newer) else 'waiting'
+    maximum = engine
+    for version in newer:
+        if version in BREAKING_TRANSITIONS or version not in REVIEWED_TRANSITIONS:
+            break
+        maximum = version
+    row = {'announce': maximum, 'minimum': engine, 'maximum': maximum}
+    if maximum == upstream:
+        status = 'following'
+    if maximum > engine:
         if previous and all(previous.get(k) == row[k] for k in row):
-            return previous, 'following'  # same range: no new policy for every OpenCE build
-        if upstream_tag:
+            return previous, status  # no new policy for every same-protocol build
+        if maximum == upstream and upstream_tag:
             row['follows'] = upstream_tag
-        return row, 'following'
-    return kept, 'waiting'
+    return row, status
 
 
 def render(policy):
     return (json.dumps(policy, indent=2, sort_keys=True) + '\n').encode()
 
 
-def plan(published, engines, upstream, upstream_tag, kinds, mode='follow', approved_through=0, now=None):
+def plan(published, engines, upstream, upstream_tag, mode='follow', now=None):
     """(document bytes or None when unchanged, report)"""
     now = int(time.time()) if now is None else now
     old = published['engines'] if published else {}
@@ -161,18 +147,20 @@ def plan(published, engines, upstream, upstream_tag, kinds, mode='follow', appro
         if mode == 'exact':
             row, status = exact(engine), 'withdrawn'
         else:
-            row, status = decide(engine, upstream, kinds, previous, approved_through, upstream_tag)
+            row, status = decide(engine, upstream, previous, upstream_tag)
         check_row(engine, row)
         rows[str(engine)] = row
         report['engines'][str(engine)] = {'status': status, **row}
+        if previous and (row['minimum'] > previous['minimum'] or row['maximum'] < previous['maximum'] or
+                         row['announce'] < previous['announce']):
+            report['engines'][str(engine)]['withdrawn'] = True
     if published and rows == old:
         report['changed'] = False
         return None, report
     serial = max(now, (published or {}).get('serial', 0) + 1)
     policy = {'format': 1, 'serial': serial, 'engines': rows,
               'issued': datetime.datetime.fromtimestamp(now, datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
-              'basis': f'OpenCE {upstream_tag} network {upstream}; additive versions from {CLASSIFIER} delta.h'
-                       + (f'; maintainer approved through {approved_through}' if approved_through else '')}
+              'basis': f'OpenCE {upstream_tag} network {upstream}; locally reviewed HaloPad transitions only'}
     document = render(policy)
     check_document(document)
     report.update(changed=True, serial=serial)
@@ -279,12 +267,10 @@ def gather():
     if not re.fullmatch(r'[0-9a-f]{40}', record.get('revision', '')):
         raise PolicyError('config/xbox-release.json has no engine revision')
     engine = network_version(raw(OPENCE, record['revision'], LIMITS))
-    classifier = api(f'repos/{CLASSIFIER}/commits/main')['sha']
-    kinds = classification(raw(CLASSIFIER, classifier, DELTA).decode())
     changed = api(f'repos/{OPENCE}/commits?path={LIMITS}&sha={commit}&per_page=1')
     raised = changed[0]['commit']['committer']['date'] if changed else None
     return {'tag': tag, 'commit': commit, 'upstream': upstream, 'engine': engine,
-            'engine_release': record.get('release'), 'kinds': kinds, 'classifier': classifier, 'raised': raised}
+            'engine_release': record.get('release'), 'raised': raised}
 
 
 def snapshot():
@@ -321,9 +307,7 @@ def publish(envelope, serial):
 def update(args):
     world = gather()
     published, _ = published_policy()
-    document, report = plan(published, {world['engine']}, world['upstream'], world['tag'], world['kinds'],
-                            args.mode, args.approve_through)
-    report['classifier'] = f'{CLASSIFIER}@{world["classifier"]}'
+    document, report = plan(published, {world['engine']}, world['upstream'], world['tag'], args.mode)
     report['engine_release'] = world['engine_release']
     report['raised'] = world['raised']
     statuses = {e['status'] for e in report['engines'].values()}
@@ -352,7 +336,8 @@ def summary(report):
     lines = [f'OpenCE {upstream["release"]} uses network version {upstream["network_version"]}.', '',
              '| HaloPad engine | Status | Announces | Joins |', '| --- | --- | --- | --- |']
     for engine, row in sorted(report['engines'].items(), key=lambda item: int(item[0])):
-        lines.append(f'| {engine} | {row["status"]} | {row["announce"]} | {row["minimum"]} to {row["maximum"]} |')
+        status = row['status'] + ('; unsafe widening withdrawn' if row.get('withdrawn') else '')
+        lines.append(f'| {engine} | {status} | {row["announce"]} | {row["minimum"]} to {row["maximum"]} |')
     lines += ['', f'Published signed policy {report["serial"]}.' if report.get('commit') else
               'A new policy was prepared but not published.' if report.get('changed') else
               'The published policy is unchanged.']
@@ -360,32 +345,12 @@ def summary(report):
 
 
 def notify(report):
-    """Write the run summary; open one issue per upstream version that needs a person."""
+    """Write the workflow summary. Do not create issues or send messages."""
     text = summary(report)
     if os.environ.get('GITHUB_STEP_SUMMARY'):
         with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as stream:
             stream.write(text)
     print(text)
-    if not report.get('attention'):
-        return
-    version = report['upstream']['network_version']
-    breaking = any(row['status'] == 'needs-release' for row in report['engines'].values())
-    title = (f'OpenCE network version {version} needs a new HaloPad build' if breaking else
-             f'OpenCE network version {version} is waiting for a compatibility decision')
-    existing = subprocess.check_output(['gh', 'issue', 'list', '--state', 'open', '--search', f'in:title "{title}"',
-                                        '--json', 'title'], text=True)
-    if any(item['title'] == title for item in json.loads(existing)):
-        return
-    advice = ('ChupathingyCE classifies this change as breaking, so installed HaloPad apps cannot follow it. '
-              'A new HaloPad build with a newer engine is needed; existing apps keep playing with each other '
-              'and with OpenCE players on the versions they already follow.' if breaking else
-              'ChupathingyCE has not classified this OpenCE network version yet, so installed apps still use the '
-              'previous policy. If you have tested it, run the HaloPad network compatibility workflow with '
-              f'approve_through = {version}; otherwise wait or build a new HaloPad.')
-    body = f'{advice}\n\n{text}\nClassifier: {report.get("classifier", "")}\n'
-    with tempfile.NamedTemporaryFile('w', suffix='.md', delete=False) as stream:
-        stream.write(body)
-    subprocess.run(['gh', 'issue', 'create', '--title', title, '--body-file', stream.name], check=True)
 
 
 def main():
@@ -393,8 +358,6 @@ def main():
     commands = parser.add_subparsers(dest='command', required=True)
     command = commands.add_parser('update')
     command.add_argument('--mode', choices=('follow', 'exact'), default='follow')
-    command.add_argument('--approve-through', type=int, default=0,
-                         help='treat OpenCE network versions up to this one as additive (a maintainer decision)')
     command.add_argument('--key', type=Path)
     command.add_argument('--publish', action='store_true')
     command.add_argument('--out', type=Path)
