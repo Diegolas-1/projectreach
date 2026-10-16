@@ -15,6 +15,11 @@
 #include <string.h>
 #include <sys/socket.h>
 
+#if XG_BONJOUR
+#include "xg_lan.h"
+#include "xg_lan_bridge.h"
+#endif
+
 typedef int posix_long;
 typedef unsigned int posix_ulong;
 struct posix_file_information;
@@ -121,6 +126,17 @@ int xh_hostposix_find_entry_case_insensitive(uint32_t directory, uint32_t name, 
 
 /* ---------- sockets */
 
+#if XG_BONJOUR
+/* Upstream owns its Winsock error in private TLS. A fanout may succeed before
+   its last destination fails, so retain the aggregate result until a socket
+   operation updates it. File operations do not change Winsock's last error. */
+static __thread int lan_send_error_valid, lan_send_error;
+#define SOCKET_BEGIN() (lan_send_error_valid = 0)
+#else
+#define SOCKET_BEGIN() ((void)0)
+#endif
+#define SOCKET_KEEP(expression) do { SOCKET_BEGIN(); KEEP(expression); } while (0)
+
 static socklen_t address_in(uint32_t guest, int length, struct sockaddr_storage *host)
 {
 	const uint8_t *bytes = G(const uint8_t *, guest);
@@ -154,29 +170,36 @@ static void address_out(const struct sockaddr_storage *host, socklen_t length, u
 	*G(int *, guest_length) = (int)length;
 }
 
-int xh_hostposix_socket_last_error(void) { return posix_socket_last_error(); }
-int xh_hostposix_socket(int family, int type, int protocol) { KEEP(posix_socket(family == 10 ? AF_INET6 : family, type, protocol)); }
-int xh_hostposix_socket_close(int s) { KEEP(posix_socket_close(s)); }
+int xh_hostposix_socket_last_error(void)
+{
+#if XG_BONJOUR
+	if (lan_send_error_valid) return lan_send_error;
+#endif
+	return posix_socket_last_error();
+}
+int xh_hostposix_socket(int family, int type, int protocol) { SOCKET_KEEP(posix_socket(family == 10 ? AF_INET6 : family, type, protocol)); }
+int xh_hostposix_socket_close(int s) { SOCKET_KEEP(posix_socket_close(s)); }
 
 int xh_hostposix_socket_bind(int s, uint32_t address, int length)
 {
 	struct sockaddr_storage host;
 	socklen_t size = address_in(address, length, &host);
-	KEEP(posix_socket_bind(s, size ? (void *)&host : NULL, (int)size));
+	SOCKET_KEEP(posix_socket_bind(s, size ? (void *)&host : NULL, (int)size));
 }
 
 int xh_hostposix_socket_connect(int s, uint32_t address, int length)
 {
 	struct sockaddr_storage host;
 	socklen_t size = address_in(address, length, &host);
-	KEEP(posix_socket_connect(s, size ? (void *)&host : NULL, (int)size));
+	SOCKET_KEEP(posix_socket_connect(s, size ? (void *)&host : NULL, (int)size));
 }
 
-int xh_hostposix_socket_listen(int s, int backlog) { KEEP(posix_socket_listen(s, backlog)); }
+int xh_hostposix_socket_listen(int s, int backlog) { SOCKET_KEEP(posix_socket_listen(s, backlog)); }
 
 int xh_hostposix_socket_accept(int s, uint32_t address, uint32_t length)
 {
 	struct sockaddr_storage host;
+	SOCKET_BEGIN();
 	int size = sizeof(host), result = posix_socket_accept(s, &host, &size);
 	xg_errno = xg_linux_errno(errno);
 	if (result >= 0)
@@ -184,20 +207,59 @@ int xh_hostposix_socket_accept(int s, uint32_t address, uint32_t length)
 	return result;
 }
 
-int xh_hostposix_socket_send(int s, uint32_t buffer, int length, int flags) { KEEP(posix_socket_send(s, G(const void *, buffer), length, flags)); }
+int xh_hostposix_socket_send(int s, uint32_t buffer, int length, int flags) { SOCKET_KEEP(posix_socket_send(s, G(const void *, buffer), length, flags)); }
 
 int xh_hostposix_socket_sendto(int s, uint32_t buffer, int length, int flags, uint32_t address, int address_length)
 {
 	struct sockaddr_storage host;
 	socklen_t size = address_in(address, address_length, &host);
+	SOCKET_BEGIN();
+#if XG_BONJOUR
+	struct sockaddr_in *ipv4 = (struct sockaddr_in *)&host;
+	if (size >= sizeof(*ipv4) && host.ss_family == AF_INET &&
+		ipv4->sin_addr.s_addr == htonl(INADDR_BROADCAST) &&
+		(ipv4->sin_port == htons(5150) || ipv4->sin_port == htons(5151))) {
+		int initial_errno = errno, type = 0;
+		socklen_t type_size = sizeof(type);
+		int datagram = getsockopt(s, SOL_SOCKET, SO_TYPE, &type, &type_size) == 0 && type == SOCK_DGRAM;
+		errno = initial_errno;
+		if (datagram) {
+			uint32_t peers[XG_LAN_MAX_PEERS];
+			size_t count = xg_lan_snapshot(peers, sizeof(peers) / sizeof(peers[0]));
+			if (count > sizeof(peers) / sizeof(peers[0])) count = sizeof(peers) / sizeof(peers[0]);
+			errno = initial_errno;
+			/* Retain raw broadcast for ordinary OpenCE peers on macOS. On iOS,
+			   Bonjour's unicast copies can succeed without a multicast entitlement. */
+			int result = posix_socket_sendto(s, G(const void *, buffer), length, flags, &host, (int)size);
+			int saved_errno = errno, saved_error = posix_socket_last_error();
+			for (size_t i = 0; i < count; i++) {
+				uint32_t ip = ntohl(peers[i]);
+				if (!(ip >> 24) || (ip >> 24) == 127 || (ip >> 24) >= 224) continue;
+				size_t j;
+				for (j = 0; j < i && peers[j] != peers[i]; j++) {}
+				if (j != i) continue;
+				struct sockaddr_in peer = *ipv4;
+				peer.sin_addr.s_addr = peers[i];
+				int sent = posix_socket_sendto(s, G(const void *, buffer), length, flags, &peer, sizeof(peer));
+				if (sent >= 0) { result = sent; saved_errno = initial_errno; saved_error = 0; }
+			}
+			lan_send_error = saved_error;
+			lan_send_error_valid = 1;
+			errno = saved_errno;
+			xg_errno = xg_linux_errno(errno);
+			return result;
+		}
+	}
+#endif
 	KEEP(posix_socket_sendto(s, G(const void *, buffer), length, flags, size ? (void *)&host : NULL, (int)size));
 }
 
-int xh_hostposix_socket_recv(int s, uint32_t buffer, int length, int flags) { KEEP(posix_socket_recv(s, G(void *, buffer), length, flags)); }
+int xh_hostposix_socket_recv(int s, uint32_t buffer, int length, int flags) { SOCKET_KEEP(posix_socket_recv(s, G(void *, buffer), length, flags)); }
 
 int xh_hostposix_socket_recvfrom(int s, uint32_t buffer, int length, int flags, uint32_t address, uint32_t address_length)
 {
 	struct sockaddr_storage host;
+	SOCKET_BEGIN();
 	int size = sizeof(host), result = posix_socket_recvfrom(s, G(void *, buffer), length, flags, &host, &size);
 	xg_errno = xg_linux_errno(errno);
 	if (result >= 0)
@@ -205,18 +267,19 @@ int xh_hostposix_socket_recvfrom(int s, uint32_t buffer, int length, int flags, 
 	return result;
 }
 
-int xh_hostposix_socket_shutdown(int s, int how) { KEEP(posix_socket_shutdown(s, how)); }
-int xh_hostposix_socket_set_nonblocking(int s, int value) { KEEP(posix_socket_set_nonblocking(s, value)); }
-int xh_hostposix_socket_bytes_available(int s, uint32_t count) { KEEP(posix_socket_bytes_available(s, GP(count))); }
-int xh_hostposix_socket_set_nodelay(int s) { KEEP(posix_socket_set_nodelay(s)); }
+int xh_hostposix_socket_shutdown(int s, int how) { SOCKET_KEEP(posix_socket_shutdown(s, how)); }
+int xh_hostposix_socket_set_nonblocking(int s, int value) { SOCKET_KEEP(posix_socket_set_nonblocking(s, value)); }
+int xh_hostposix_socket_bytes_available(int s, uint32_t count) { SOCKET_KEEP(posix_socket_bytes_available(s, GP(count))); }
+int xh_hostposix_socket_set_nodelay(int s) { SOCKET_KEEP(posix_socket_set_nodelay(s)); }
 int xh_hostposix_socket_setsockopt(int s, int level, int name, uint32_t value, int length)
-{ KEEP(posix_socket_setsockopt(s, level, name, GP(value), length)); }
+{ SOCKET_KEEP(posix_socket_setsockopt(s, level, name, GP(value), length)); }
 int xh_hostposix_socket_getsockopt(int s, int level, int name, uint32_t value, uint32_t length)
-{ KEEP(posix_socket_getsockopt(s, level, name, GP(value), GP(length))); }
+{ SOCKET_KEEP(posix_socket_getsockopt(s, level, name, GP(value), GP(length))); }
 
 int xh_hostposix_socket_getsockname(int s, uint32_t address, uint32_t length)
 {
 	struct sockaddr_storage host;
+	SOCKET_BEGIN();
 	int size = sizeof(host), result = posix_socket_getsockname(s, &host, &size);
 	xg_errno = xg_linux_errno(errno);
 	if (result == 0)
@@ -227,6 +290,7 @@ int xh_hostposix_socket_getsockname(int s, uint32_t address, uint32_t length)
 int xh_hostposix_socket_getpeername(int s, uint32_t address, uint32_t length)
 {
 	struct sockaddr_storage host;
+	SOCKET_BEGIN();
 	int size = sizeof(host), result = posix_socket_getpeername(s, &host, &size);
 	xg_errno = xg_linux_errno(errno);
 	if (result == 0)
@@ -236,9 +300,26 @@ int xh_hostposix_socket_getpeername(int s, uint32_t address, uint32_t length)
 
 int xh_hostposix_socket_select(uint32_t r, uint32_t rc, uint32_t w, uint32_t wc, uint32_t e, uint32_t ec,
 	posix_long seconds, posix_long microseconds, int infinite)
-{ KEEP(posix_socket_select(GP(r), GP(rc), GP(w), GP(wc), GP(e), GP(ec), seconds, microseconds, infinite)); }
+{
+	int result = posix_socket_select(GP(r), GP(rc), GP(w), GP(wc), GP(e), GP(ec), seconds, microseconds, infinite);
+	/* Like upstream, a timeout leaves the previous socket error untouched. */
+	if (result != 0) SOCKET_BEGIN();
+	xg_errno = xg_linux_errno(errno);
+	return result;
+}
 
-posix_ulong xh_hostposix_local_ipv4_address(void) { return posix_local_ipv4_address(); }
+posix_ulong xh_hostposix_local_ipv4_address(void)
+{
+	posix_ulong routed = posix_local_ipv4_address();
+#if XG_BONJOUR
+	struct ifaddrs *interfaces;
+	if (getifaddrs(&interfaces) == 0) {
+		routed = xg_lan_preferred_address(interfaces, routed);
+		freeifaddrs(interfaces);
+	}
+#endif
+	return routed;
+}
 void xh_hostposix_random_bytes(uint32_t buffer, posix_ulong size) { posix_random_bytes(G(void *, buffer), size); }
 posix_ulong xh_hostposix_resolve_ipv4(uint32_t host) { return posix_resolve_ipv4(G(const char *, host)); }
 

@@ -242,6 +242,7 @@ def package(exe, out, work, target=TARGET, identity=None, provisioning=None, pro
         info.update({'CFBundleSupportedPlatforms': ['MacOSX'], 'LSMinimumSystemVersion': minimum, 'UIDeviceFamily': [2],
                      'LSApplicationCategoryType': 'public.app-category.action-games'})
     if xbox:
+        info['NSBonjourServices'] = ['_halopad._udp']
         shutil.copy2(ROOT / "port/ios/assets/ChooserBackground.png", res / "ChooserBackground.png")
     info.update(compile_icon(res, out, target, minimum))
     with open((app / 'Contents' if mac else app) / 'Info.plist', 'wb') as f:

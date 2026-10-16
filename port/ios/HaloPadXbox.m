@@ -66,9 +66,8 @@ static void xbox_log_sink(const char *line)
 		HP_LOG("Xbox: later engine messages are not logged this session");
 }
 
-/* system link: iOS lets apps broadcast only with a restricted entitlement, so
- * the game searches the addresses the player lists instead (upstream's
- * network.broadcast, read when the game starts) */
+/* Bonjour finds HaloPad peers without iOS's restricted broadcast entitlement.
+ * Optional manual addresses also reach other OpenCE clients. */
 static NSString *const link_key = @"HaloPadXboxLinkAddresses";
 
 static NSString *own_addresses(void)
@@ -242,14 +241,16 @@ static BOOL xbox_backup_saves(NSError **error)
 - (void)showLink
 {
 	NSString *saved = [NSUserDefaults.standardUserDefaults stringForKey:link_key] ?: @"";
-	NSString *message = [NSString stringWithFormat:@"To play system link with other iPads, iPhones or computers running this "
-		@"Xbox version, enter their addresses (separated by commas). They enter this device's address: %@.\n\n"
-		@"Changes take effect the next time you open Halo Xbox.", own_addresses()];
+	NSString *message = [NSString stringWithFormat:@"HaloPad devices on the same Wi-Fi find each other automatically. "
+		@"Allow Local Network access on both devices.\n\n"
+		@"For other OpenCE clients, add their addresses below, separated by commas. "
+		@"They can add this device's address: %@.\n\n"
+		@"Address changes take effect the next time you open Halo Xbox.", own_addresses()];
 	UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"System Link" message:message
 		preferredStyle:UIAlertControllerStyleAlert];
 	[alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
 		field.text = saved;
-		field.placeholder = @"192.168.1.20, 192.168.1.21";
+		field.placeholder = @"Additional addresses (optional)";
 		field.keyboardType = UIKeyboardTypeNumbersAndPunctuation;
 		field.autocorrectionType = UITextAutocorrectionTypeNo;
 	}];
@@ -371,7 +372,8 @@ static BOOL xbox_backup_saves(NSError **error)
 	{
 		NSString *addresses = [NSUserDefaults.standardUserDefaults stringForKey:link_key];
 		if (addresses.length)
-			setenv("HALO_NET_BROADCAST", addresses.UTF8String, 0);
+			/* Keep automatic discovery when the player has saved manual peers. */
+			setenv("HALO_NET_BROADCAST", [@"255.255.255.255," stringByAppendingString:addresses].UTF8String, 0);
 	}
 	/* development on a device: XG_FRAME_DUMP_DOCUMENTS=1 saves frames to Documents/xbox-frame.ppm */
 	if (getenv("XG_FRAME_DUMP_DOCUMENTS"))

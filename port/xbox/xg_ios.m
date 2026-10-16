@@ -35,6 +35,7 @@
 #include <sys/stat.h>
 #include "xg_host.h"
 #include "xg_ios.h"
+#include "xg_lan.h"
 #include "xg_scancode_names.h"
 #if TARGET_OS_SIMULATOR
 #include "xg_audio_capture.h"
@@ -1273,5 +1274,6 @@ int xg_ios_start(const char *image_path, const char *data_root, const char *save
 		return -1;
 	}
 	xg_log("started: data %s, saves %s", data_root, save_root);
+	xg_lan_start();
 	return 0;
 }

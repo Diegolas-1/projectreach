@@ -49,6 +49,7 @@ class XboxOnlyPackageTests(unittest.TestCase):
                 info = plistlib.loads((app / ('Contents/Info.plist' if 'macabi' in target else 'Info.plist')).read_bytes())
                 self.assertEqual(info['CFBundleShortVersionString'], '0.3.8')
                 self.assertEqual(info['CFBundleVersion'], '2')
+                self.assertEqual(info['NSBonjourServices'], ['_halopad._udp'])
                 self.assertEqual({str(p.relative_to(resources / 'data')) for p in (resources / 'data').rglob('*') if p.is_file()},
                                  {'xbox/halo_guest.elf', 'xbox/brokers.txt', 'xbox/build.json'})
 
