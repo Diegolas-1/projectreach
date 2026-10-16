@@ -14,15 +14,33 @@ TLS dependencies on Mac and iOS. Reviewed renderer and input adaptations cover
 an additional draw-call alias regression: EXT/OES base-vertex index-buffer offsets
 were being translated as guest pointers. The bridge now handles these like the
 core entry point; an executable regression fails before the fix and passes after.
-Build 26 is rejected for rendering; **build 27** includes the correction.
+Build 26 is rejected for rendering; build 27 includes the correction. **Build 28**
+also restores touch controls when player one's controller disconnects while
+player two remains connected, without moving the second player's controller slot.
+Build 29 also serializes controller discovery with slot updates, so an older guest
+poll cannot restore a disconnected controller after the UI refresh. Deterministic
+slot/visibility regressions fail before these fixes and pass after them.
 
-Both build-27 packages pass manifest, contents, notices and signing audits. The
-candidate run passes **370 Xbox tests and 23 builder tests**. Native DTLS tests
+Both build-29 packages pass manifest, contents, notices and signing audits. The
+candidate run passes **374 Xbox tests and 23 builder tests**. Native DTLS tests
 also exercise real Mbed TLS handshakes, fingerprints, HMAC, bidirectional data,
-invalid handles, close/double-close, packet loss and clock wrap. The packaged Mac
-app loads the private CE Blood Gulch fixture and renders gameplay with zero GL
-errors. Initial incorrect Mac fixture paths were outside its UUID-named sandbox;
-the successful run uses an isolated directory inside its actual container.
+invalid handles, close/double-close, packet loss and clock wrap. Earlier packaged Mac
+testing loaded the private CE Blood Gulch fixture and rendered gameplay with zero
+GL errors. Initial incorrect Mac fixture paths were outside its UUID-named sandbox;
+the successful run uses an isolated directory inside its actual container. The
+exact final build-29 Mac package also passed a 48-second campaign smoke with
+zero GL errors and unchanged source maps, save sentinel and existing preferences.
+
+Clean player builds found and fixed a separate SDK-selection defect: Apple's
+Python reintroduces the Mac SDK in `SDKROOT`, even after PadMint clears it. Device
+and Simulator builds now select their matching SDK; compatible explicit overrides
+remain supported. Eleven runner tests pass, including a real Apple-Python child
+process compiling UIKit for iPhone. Both iOS and Mac `player-check.sh` runs then
+passed from clean source `18657be`, using PadMint main `2d81394`, Apple Python
+3.9.6, and a fresh source clone and empty PadMint home per platform. Extracted
+packages pass strict/deep signature verification; all 45 embedded runtime-source
+hashes match their clean checkout. No post-publication check was run because
+there is no new release.
 
 Physical testing is limited to the **iPhone 14**, as requested. HaloPad was absent
 before the first installation. Before upgrading the test installation from build
@@ -31,6 +49,14 @@ installation, all game data, saves and preferences remained identical; only iOS
 launch snapshots changed. Build 27 renders the campaign tutorial room and NPC;
 630 seconds of campaign reporting have zero GL errors, with steady windows near
 60 fps after loading. This is not a completed campaign or a full touch-control test.
+
+An in-place upgrade from a retained personal 0.3.9 build to 0.3.10/build 28
+also passed on the iPhone. Its OpenCE 170 runtime sources match the public
+0.3.9 tag; the release itself distributes a recipe, not a public IPA. Before
+testing, two independent full backups matched all 216 files (3,887,480,768
+bytes). Installation readbacks matched all 56 checked map, save, configuration
+and preference files (1,236,536,208 bytes), and both versions reached the menu.
+Build 29 subsequently installed with those same 56 checked files unchanged.
 
 Real internet transfers now pass on the packaged Mac app and physical iPhone:
 
@@ -51,6 +77,24 @@ Real internet transfers now pass on the packaged Mac app and physical iPhone:
   unchanged hashes. With a different existing `deathisland.map`, it preserved
   that file and downloaded `deathisland_451254bb.map`, then entered gameplay;
   resources, stock UI, save sentinel and the original fixture stayed unchanged.
+- The physical iPhone also hosted a private internet game and served Blood Gulch
+  plus all three resources to an empty native Mac client (179,594,477 bytes).
+  After a client interruption, 46,966,236 verified bytes were reused and the
+  remaining 132,628,241 bytes downloaded. All four completed hashes match the
+  independent originals, no partial files remain, and both players entered the
+  same advancing simulation. The client stock map and save sentinel were preserved.
+- Build 28 survived 48.5 seconds in the background during a private Blood Gulch
+  download. iOS suspended the app and the match connection timed out. After an
+  explicit app restart and rejoin, it reused 16 verified pieces (4,194,304 bytes)
+  and downloaded the remaining 9,741,788 bytes. The completed map and three
+  existing resources matched their original hashes, with no partial files left.
+  Two-player gameplay resumed with zero GL errors; stock UI and the save sentinel
+  stayed unchanged. This proves recovery after rejoining, not an uninterrupted
+  background download or automatic match reconnection.
+- Final build 29 rejoined the cached CE Blood Gulch map and rendered two-player
+  gameplay with zero GL errors and no new map download. An initial retry was
+  correctly rejected after the test host bot switched to stock Xbox Blood Gulch;
+  the successful repeat used a fresh host with the CE map verified and no bot.
 
 Direct System Link also passed between the Mac host and physical iPhone over
 their USB network connection, with internet mode disabled. The iPhone downloaded
@@ -63,9 +107,12 @@ unicast connected in that configuration.
 
 The controlled two-process LAN harness remains available, but its full matrix
 is not claimed as completed. See [XBOX-MAP-SHARING-TEST.md](XBOX-MAP-SHARING-TEST.md).
-Same-subnet Wi-Fi discovery, iPhone hosting/seeding, iOS background recovery,
-full touch/controller gameplay, upgrades from the public release and the clean
-PadMint player checks remain separate release gates. No iPad was tested.
+The available Wi-Fi and USB addresses on the Mac could bind but could not route
+UDP both ways; the harness now checks that before staging files or starting games.
+Same-subnet Wi-Fi discovery, third-peer seeding and full physical touch/controller
+gameplay remain separate release gates. Physical UI automation requires passcode
+approval, so full touch testing needs an attended device session. No iPad was tested.
+The clean post-publication PadMint check is still required if a release is approved.
 
 The live signed compatibility policy was corrected separately: serial
 `1792107821` restricts engines 24 and 25 to their actual versions. The new reader
@@ -75,10 +122,12 @@ corrected code reaches the default branch; see [UPDATE-STRATEGY.md](UPDATE-STRAT
 
 After testing, the iPhone test library was moved intact to the normal `Halo Xbox`
 folder, and the app was reopened without network-test launch variables. It contains
-the menu map, the first campaign map and the downloaded CE maps/resources; it is not
-a complete disc import. All test clients were stopped.
+the menu map, the first campaign map, the stock host default map and the downloaded
+CE maps/resources; it is not a complete disc import. Temporary device diagnostic
+apps and the isolated download-test fixture were removed after preserving their
+evidence. All test clients were stopped.
 
-Private evidence: `generated/xbox-candidates/runs/27-build-206/`,
+Private evidence: `generated/xbox-candidates/runs/29-build-206/`,
 `generated/opence-206-validation/` and `ref/xbox-build/map-sharing-206-iphone/`.
 These contain local game inputs or device details and must not be published.
 
