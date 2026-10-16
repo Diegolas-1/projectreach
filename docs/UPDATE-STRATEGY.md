@@ -38,12 +38,14 @@ responses are byte-identical. The verified document is retained privately at
 
 Installed apps refresh the policy at the picker and apply it at their next
 **Play Xbox**. Offline old apps retain their cached policy until they refresh.
-The existing scheduled workflow is `disabled_manually` to prevent the old
-classifier from widening those rows again. Keep it disabled until the corrected
-workflow and tool are merged into `main`, then verify them before re-enabling it.
-The OpenCE 208 build needs no additional policy publication: an absent engine
-29 row uses the built-in exact-version rule, and the corrected app also clamps
-any cached widening. This policy correction does not publish a game release.
+After the corrected source merged into `main` (`868bfc6`), the scheduled workflow
+was re-enabled. [Run 38877144143](https://github.com/chrissotraidis/projectreach/actions/runs/38877144143)
+passed on that exact source and published signed serial `1792141050` in policy
+commit `f640e8d1f31a328d594b6cd4c423a3e794d74908`. Engines 24, 25 and 29 each
+announce and accept only their own version. Signature-verified API and raw-CDN
+responses match byte for byte, and a repeated `follow` plan makes no change.
+The app also clamps cached widening; an absent engine row still defaults to its
+exact version. The workflow is active and cannot grant an older engine new features.
 
 The signing key remains the `HALOPAD_NETWORK_POLICY_KEY` repository secret. The
 `halopad-network` branch holds only the policy; `halopad-updates` remains the app feed.
@@ -53,9 +55,9 @@ Validation for this correction: 14 policy tests pass with both the default Pytho
 and Apple's `/usr/bin/python3`, including compiled host rules and Objective-C
 Security.framework signature, cache, serial and stale-range checks. This does not
 establish physical-device multiplayer or custom-map download acceptance; current
-engine validation is tracked in [STATUS.md](STATUS.md). The 0.3.10 source/recipe
-release is authorized once its player build checks pass; public binary delivery
-remains a separate, disabled route.
+engine validation is tracked in [STATUS.md](STATUS.md). The [0.3.10 source/recipe
+release](https://github.com/chrissotraidis/projectreach/releases/tag/v0.3.10) is
+published; public binary delivery remains a separate, disabled route.
 
 ## Historical decision, 2026-10-09 (superseded)
 

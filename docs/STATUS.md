@@ -2,6 +2,17 @@
 
 ## HaloPad 0.3.10: OpenCE 208
 
+**Published 2026-10-16:** [HaloPad 0.3.10](https://github.com/chrissotraidis/projectreach/releases/tag/v0.3.10)
+is a source/recipe release at `868bfc6`, containing only its PadMint recipe and
+`SHA256SUMS`. Anonymous latest-release and asset readbacks match the audited
+files. Required post-publication PadMint checks passed for both iOS and Mac:
+Apple Python 3.9.6, empty PadMint folders, no supplied checkout, and the published
+0.3.10 source. The two builds completed in 232 and 235 seconds. The only change
+from the clean pre-release build source to the tag was validation documentation.
+
+The corrected compatibility workflow is active. Its verified signed policy keeps
+engines 24, 25 and 29 exact; see [UPDATE-STRATEGY.md](UPDATE-STRATEGY.md).
+
 The release pin is OpenCE 208 (`f90d95552797039383049c1f8f79a35ddbe98b2d`),
 the latest upstream release checked on 2026-10-16. It retains network version 29.
 Compared with the tested 206 candidate, 208 fixes assembly string conversion
@@ -196,14 +207,15 @@ UDP both ways; the harness now checks that before staging files or starting game
 Third-peer seeding, the complete harness matrix and full physical touch/controller
 gameplay are not claimed by these bounded tests. No iPad was
 tested during this OpenCE 206 validation. The clean PadMint player-build checks
-above cover source `18657be`; the final release source must be checked again before tagging.
-The clean post-publication PadMint check is still required if a release is approved.
+in this earlier section covered source `18657be`. The final 208 pre-release and
+post-publication checks are recorded at the top of this document.
 
 The live signed compatibility policy was corrected separately: serial
 `1792107821` restricts engines 24 and 25 to their actual versions. The new reader
 also clamps stale widened rows. Engine 29 safely uses exact matching without a
-published row. The old scheduled policy workflow remains disabled until the
-corrected code reaches the default branch; see [UPDATE-STRATEGY.md](UPDATE-STRATEGY.md).
+published row. The old scheduled policy workflow was disabled during this earlier validation.
+The corrected workflow is now merged, verified and active with an exact engine
+29 row; see [UPDATE-STRATEGY.md](UPDATE-STRATEGY.md).
 
 After testing, the iPhone test library was moved intact to the normal `Halo Xbox`
 folder, and the app was reopened without network-test launch variables. It contains
