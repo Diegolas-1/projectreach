@@ -2,7 +2,7 @@
 
 ## Unreleased: OpenCE 206 / HaloPad 0.3.10
 
-**2026-10-16: engine update, policy correction and real custom-map downloads verified; unreleased.**
+**2026-10-16: engine update, policy correction, custom-map downloads and automatic Wi-Fi discovery verified; unreleased.**
 The engine pin is OpenCE 206 (`8102e711c353068d22d62efe6bf67ebc8a90a22e`),
 network version 29. This brings upstream's automatic custom-map and resource-map
 downloads to the Xbox edition. The PC Custom Edition engine is unchanged. No game
@@ -105,13 +105,55 @@ unchanged. This proves direct local transport, not Wi-Fi discovery. The devices
 were on different Wi-Fi subnets; neither broadcast discovery nor explicit Wi-Fi
 unicast connected in that configuration.
 
+**Automatic Wi-Fi discovery now passes on build 31 (`9e8ce02`).** The user moved
+the iPhone to the Mac's network; no Mac network settings changed. Both hosts now
+advertise and browse a declared Bonjour service, then send OpenCE's discovery
+packets to the discovered local IPv4 peers. This works without adding the
+restricted multicast entitlement. Manual addresses remain available for other
+OpenCE clients and no longer disable automatic HaloPad discovery.
+
+The first physical run exposed a second problem: Foundation sometimes resolved
+the attached iPhone only through its USB IPv6 interface, dropping its Wi-Fi IPv4
+address at refresh. Build 31 queries IPv4 across interfaces and tracks removals.
+A native regression reproduces that result and checks cancellation, stale
+callbacks, address changes, invalid endpoints and background/foreground lifecycle.
+Both build-31 packages pass contents, notices, manifest and strict signature
+audits; **378 Xbox tests plus 23 builder tests pass**. Independent review and
+iOS/Catalyst compile/link checks also pass.
+
+- The iPhone automatically discovered a Mac-hosted game and downloaded the
+  missing Blood Gulch map (13,936,092 bytes); its SHA256 matched the independent
+  original. The final build-31 repeat joined the cached map and recorded 92
+  advancing two-player samples with stable discovery and zero GL errors.
+- Reversing the roles on build 31, the Mac discovered the iPhone after the host
+  had already been running for 52 seconds. It downloaded the missing map in
+  13 seconds with the same matching hash, then both devices reported advancing
+  two-player gameplay. Stock maps, resources and save sentinels stayed unchanged.
+- After the iPhone spent 52 seconds in the background, both peer lists correctly
+  emptied. Resuming the same iPhone process restarted discovery and both peers
+  reappeared automatically. This proves discovery recovery; match reconnection
+  after suspension remains a separate action.
+- All these LAN runs disabled internet mode and used no manual addresses or
+  clipboard invitations. Socket and route evidence confirms Wi-Fi transport.
+  The System Link dialog's instructions and optional address field were checked
+  in the final Mac package; the shortened placeholder now fits.
+
+Before the Wi-Fi builds were installed, two independent full device reads
+matched all 217 files (3,749,830,220 bytes). After builds 30/31 and their isolated
+tests, all **200 normal game-data/save/preference files (3,737,010,438 bytes)**
+were identical to that backup. The seven protected fixture files also matched;
+there were no partial map downloads. The differences were logs, system launch
+state/snapshots and caches. Signing identity, entitlements and provisioning
+profile were retained for the in-place upgrades.
+
 The controlled two-process LAN harness remains available, but its full matrix
 is not claimed as completed. See [XBOX-MAP-SHARING-TEST.md](XBOX-MAP-SHARING-TEST.md).
 The available Wi-Fi and USB addresses on the Mac could bind but could not route
 UDP both ways; the harness now checks that before staging files or starting games.
-Same-subnet Wi-Fi discovery, third-peer seeding and full physical touch/controller
-gameplay remain separate release gates. Physical UI automation requires passcode
-approval, so full touch testing needs an attended device session. No iPad was tested.
+Third-peer seeding and full physical touch/controller gameplay remain separate
+release gates. Full touch testing needs an attended device session. No iPad was
+tested during this OpenCE 206 validation. The clean PadMint player-build checks
+above cover source `18657be`; the final release source must be checked again before tagging.
 The clean post-publication PadMint check is still required if a release is approved.
 
 The live signed compatibility policy was corrected separately: serial
@@ -127,7 +169,9 @@ CE maps/resources; it is not a complete disc import. Temporary device diagnostic
 apps and the isolated download-test fixture were removed after preserving their
 evidence. All test clients were stopped.
 
-Private evidence: `generated/xbox-candidates/runs/29-build-206/`,
+Private evidence: `generated/xbox-candidates/runs/31-build-206/`,
+`generated/opence-206-validation/wifi-discovery-20261016/`,
+`generated/xbox-candidates/runs/29-build-206/`,
 `generated/opence-206-validation/` and `ref/xbox-build/map-sharing-206-iphone/`.
 These contain local game inputs or device details and must not be published.
 

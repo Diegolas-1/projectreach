@@ -1,14 +1,31 @@
 # Xbox engine (second HaloPad engine)
 
-**Current build policy, 2026-10-09:** normal builds replay
-`config/xbox-release.json` (OpenCE 168, network version 24) with the
-`network-policy-v1` adaptation: the installed app follows compatible OpenCE network
-raises through a signed policy ([UPDATE-STRATEGY.md](UPDATE-STRATEGY.md#network-compatibility-policy)).
+**Current build policy, 2026-10-16 (unreleased):** normal builds replay
+`config/xbox-release.json` (OpenCE 206, network version 29) with the
+`network-policy-v1` adaptation. Compatibility requires the engine's actual network
+version; the reader clamps stale policy rows that widened it. A policy cannot
+supply missing engine features ([UPDATE-STRATEGY.md](UPDATE-STRATEGY.md#network-compatibility-policy)).
 `--xbox-latest` explicitly selects upstream; the prepared hosted app-update
 workflow handles that selection separately. Public app delivery is not enabled.
 See [UPDATE-STRATEGY.md](UPDATE-STRATEGY.md) and [STATUS.md](STATUS.md) for current
 candidate and acceptance evidence. The dated engine investigations below are
 historical and do not change the current default.
+
+The UIKit and Mac Catalyst Xbox hosts discover compatible HaloPad peers on the
+local network using the declared Bonjour service `_halopad._udp`. Bonjour finds
+addresses; OpenCE still performs discovery, version checks and map transfers.
+The bridge sends only the game's UDP discovery broadcasts on ports 5150/5151 to
+those local IPv4 peers. This avoids requiring Apple's restricted multicast
+entitlement on iPhone. Both devices still need Local Network access and a network
+that allows communication between clients. **System Link** accepts optional
+addresses for other OpenCE clients and keeps automatic HaloPad discovery enabled.
+
+Address resolution queries IPv4 across active interfaces, since an attached
+iPhone can otherwise resolve only through its USB IPv6 interface. Removed
+services and addresses leave the cache; backgrounding stops discovery and
+foregrounding starts it again. This does not promise uninterrupted background
+downloads or automatic reconnection to a match. See [STATUS.md](STATUS.md) for
+the separate package, physical iPhone and gameplay results.
 
 Status, 2026-10-03: **HaloPad offers Windows Custom Edition or Xbox Combat Evolved at launch.**
 The accepted **experimental development pin** in `config/xbox-engine.lock.json`
@@ -601,7 +618,9 @@ adapted/reviewed. Normal builds, updates and gameplay do not use that reader.
 
 ## Open items
 
-- **iPad match (separate physical gate):** iOS allows broadcast only with Apple's restricted multicast
+- **iPad match (historical result; separate physical gate):** the following describes the September
+  test. Current Bonjour discovery and physical iPhone Wi-Fi results are documented above and in
+  [STATUS.md](STATUS.md); they do not establish iPad acceptance. iOS allows broadcast only with Apple's restricted multicast
   entitlement, so the Xbox screen's **Link** button lists the other devices' addresses (and shows this
   device's own), which the game searches instead of broadcasting. Even so, an iPad joining a Mac-hosted
   game found nothing: a plain listener on the Mac's game port received **no packets** from the iPad,
