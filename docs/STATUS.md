@@ -52,12 +52,20 @@ Real internet transfers now pass on the packaged Mac app and physical iPhone:
   that file and downloaded `deathisland_451254bb.map`, then entered gameplay;
   resources, stock UI, save sentinel and the original fixture stayed unchanged.
 
-The LAN attempt did not discover the private host; these successful tests use
-OpenCE's actual internet tunnel. The controlled two-process LAN harness is still
-available, but is not claimed as a completed local matrix. See
-[XBOX-MAP-SHARING-TEST.md](XBOX-MAP-SHARING-TEST.md). Host seeding, iOS background
-recovery, full touch/controller gameplay, upgrades from the public release and
-the clean PadMint player checks remain separate release gates. No iPad was tested.
+Direct System Link also passed between the Mac host and physical iPhone over
+their USB network connection, with internet mode disabled. The iPhone downloaded
+Blood Gulch (13,936,092 bytes) in 15 seconds, matching the independent source hash,
+then joined two-player gameplay with zero GL errors. The host recorded 83 seconds
+of advancing two-player simulation; its maps and both save sentinels stayed
+unchanged. This proves direct local transport, not Wi-Fi discovery. The devices
+were on different Wi-Fi subnets; neither broadcast discovery nor explicit Wi-Fi
+unicast connected in that configuration.
+
+The controlled two-process LAN harness remains available, but its full matrix
+is not claimed as completed. See [XBOX-MAP-SHARING-TEST.md](XBOX-MAP-SHARING-TEST.md).
+Same-subnet Wi-Fi discovery, iPhone hosting/seeding, iOS background recovery,
+full touch/controller gameplay, upgrades from the public release and the clean
+PadMint player checks remain separate release gates. No iPad was tested.
 
 The live signed compatibility policy was corrected separately: serial
 `1792107821` restricts engines 24 and 25 to their actual versions. The new reader
@@ -66,8 +74,8 @@ published row. The old scheduled policy workflow remains disabled until the
 corrected code reaches the default branch; see [UPDATE-STRATEGY.md](UPDATE-STRATEGY.md).
 
 After testing, the iPhone test library was moved intact to the normal `Halo Xbox`
-folder, and the app was reopened without test launch variables. It contains the
-menu map, the first campaign map and the downloaded CE map/resources; it is not
+folder, and the app was reopened without network-test launch variables. It contains
+the menu map, the first campaign map and the downloaded CE maps/resources; it is not
 a complete disc import. All test clients were stopped.
 
 Private evidence: `generated/xbox-candidates/runs/27-build-206/`,
