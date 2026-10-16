@@ -35,12 +35,17 @@ def sha(p):
 
 
 def sdk_path(target):
-    """The SDK for a target: SDKROOT if set, else the iOS Simulator or device SDK from xcrun (macOS uses the default)."""
-    if os.environ.get('SDKROOT'):
-        return os.environ['SDKROOT']
+    """Use a target-compatible SDK, including when Apple's Python injects SDKROOT."""
+    override = os.environ.get('SDKROOT')
     if 'ios' not in target:
-        return None
-    sdk = 'iphonesimulator' if 'simulator' in target else 'iphoneos'
+        return override  # desktop core builds retain the compiler's default
+    sdk = 'macosx' if 'macabi' in target else 'iphonesimulator' if 'simulator' in target else 'iphoneos'
+    # /usr/bin/python3 adds the Mac SDK to its environment even when PadMint
+    # removed it before starting the backend. Keep an intentional matching SDK
+    # override, but never compile iPhone/Simulator code against that host SDK.
+    if override and re.fullmatch(rf'{sdk}(?:[0-9]+(?:\.[0-9]+)*)?\.sdk',
+                                 pathlib.Path(override).name.lower()):
+        return override
     return subprocess.run(['xcrun', '--sdk', sdk, '--show-sdk-path'], check=True, capture_output=True, text=True).stdout.strip()
 
 
