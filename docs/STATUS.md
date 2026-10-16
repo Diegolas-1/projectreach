@@ -13,21 +13,43 @@ camera and input source are unchanged. The reviewed adaptation accepts the exact
 Delivery remains a source/recipe release for PadMint on Apple-silicon Macs.
 Windows and other computers use **Build HaloPad (Xbox edition)** in their GitHub
 fork, then sign/install their own resulting app. There is no native Windows
-HaloPad target and no public IPA in this release. The required clean PadMint
-checks and a fresh hosted player build are tracked for the final source.
+HaloPad target and no public IPA in this release. The clean PadMint iOS and Mac
+checks passed from source `8324cfe`, using
+current PadMint main `b9f4c3d`, Apple Python 3.9.6, fresh source clones and empty
+PadMint folders. Both resulting apps pass strict signatures, notices and package
+audits; all 49 embedded runtime-source hashes match that clean source. The test
+suite passes **379 Xbox tests and 23 builder tests (402 total)**.
+
+The [hosted player workflow](https://github.com/chrissotraidis/projectreach/actions/runs/38874679471)
+also passed for both platforms. Its downloaded 0.3.10/build-3 artifacts pass
+checksums, signatures, notices, engine identity and the same 49-source-hash
+audit. This verifies the GitHub build route available to Windows users; it does
+not add a Windows-native app target.
 
 The maintainer scoped release acceptance to current online compatibility,
 automatic map downloads, and working player build routes. Broader physical
 touch/controller testing is not a release gate for this update. The existing
 native controller regressions and bounded device results remain recorded below.
 
+The exact clean-player 208 Mac app connected to a current network-29 public
+server and automatically downloaded Danger Canyon (15,165,396 bytes) in 23
+seconds. A private invite then connected it to the physical iPhone's 208 app;
+the connection selected their local Wi-Fi route. The Mac automatically downloaded
+CE Blood Gulch (13,936,092 bytes) in 13 seconds, matching the independent original
+SHA256. Both apps recorded 51 advancing two-player gameplay samples with zero
+GL errors. Existing CE resources and the save sentinel stayed unchanged, and no
+partial download files remained. These packages are the player-check outputs,
+not separately built test binaries. The in-place iPhone upgrade used the same
+signing identity and profile; a full post-test readback matched all 200 normal
+game, save and preference files against the pre-upgrade backup.
+
 ### OpenCE 206 and Wi-Fi validation retained for this update
 
-**2026-10-16: engine update, policy correction, custom-map downloads and automatic Wi-Fi discovery verified; unreleased.**
-The engine pin is OpenCE 206 (`8102e711c353068d22d62efe6bf67ebc8a90a22e`),
+**Earlier candidate validation, before the final OpenCE 208 pin above:**
+The tested engine was OpenCE 206 (`8102e711c353068d22d62efe6bf67ebc8a90a22e`),
 network version 29. This brings upstream's automatic custom-map and resource-map
 downloads to the Xbox edition. The PC Custom Edition engine is unchanged. No game
-release or tag has been published.
+release or tag had been published at this stage.
 
 The native bridge now implements the DTLS/HMAC imports and builds upstream's Mbed
 TLS dependencies on Mac and iOS. Reviewed renderer and input adaptations cover
@@ -60,8 +82,8 @@ process compiling UIKit for iPhone. Both iOS and Mac `player-check.sh` runs then
 passed from clean source `18657be`, using PadMint main `2d81394`, Apple Python
 3.9.6, and a fresh source clone and empty PadMint home per platform. Extracted
 packages pass strict/deep signature verification; all 45 embedded runtime-source
-hashes match their clean checkout. No post-publication check was run because
-there is no new release.
+hashes match their clean checkout. No post-publication check was applicable to
+that earlier candidate.
 
 Physical testing is limited to the **iPhone 14**, as requested. HaloPad was absent
 before the first installation. Before upgrading the test installation from build
