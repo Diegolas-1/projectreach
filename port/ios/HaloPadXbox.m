@@ -335,8 +335,7 @@ static BOOL xbox_backup_saves(NSError **error)
 		[pad setControllerLabel:@"Y" hint:@"Xbox Y. Switch weapons or follow the menu prompt." forControl:@"switch"];
 		pad.controllerConnected = ^BOOL {
 			if (getenv("XG_TOUCH_SHOW")) return NO;
-			for (GCController *controller in GCController.controllers) if (controller.extendedGamepad) return YES;
-			return NO;
+			return xg_ios_controller_connected();
 		};
 		pad.delegate = self;
 		pad.engineMenuItems = @[
