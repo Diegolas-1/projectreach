@@ -829,9 +829,11 @@ void xg_ios_clear_touch_pad(void)
 
 static void pads_refresh(void)
 {
-	NSArray<GCController *> *controllers = GCController.controllers;
 	int index;
 	pthread_mutex_lock(&pad_lock);
+	/* Serialize discovery with the slot update: an older guest poll must not
+	 * restore a controller after the UI has handled its disconnect. */
+	NSArray<GCController *> *controllers = GCController.controllers;
 	for (index = 1; index <= PADS; index++)
 		if (pads[index] && ![controllers containsObject:pads[index]])
 		{

@@ -34,6 +34,7 @@ class GamepadSlotsTests(unittest.TestCase):
         functions = '\n'.join(function(native, name) for name in names)
         source = r'''
 #import <Foundation/Foundation.h>
+#import <dispatch/dispatch.h>
 #include <pthread.h>
 #include <stdint.h>
 #include <assert.h>
@@ -49,7 +50,41 @@ static NSArray<GCController *> *connected;
 @end
 static uint8_t guest[256];
 #define G(type, address) ((type)(guest + (address)))
+/* Force a guest refresh to wait at its first lock, then run it between the
+ * UI refresh's unlock and its primary-slot query. These wrappers schedule
+ * real mutex operations; production discovery and slot logic stay intact. */
+static _Thread_local int stale_worker, pause_stale_lock;
+static int force_ui_unlock;
+static dispatch_semaphore_t stale_at_lock, release_stale, stale_done;
+static int scheduled_lock(pthread_mutex_t *lock) {
+    if (stale_worker && pause_stale_lock) {
+        pause_stale_lock = 0;
+        dispatch_semaphore_signal(stale_at_lock);
+        dispatch_semaphore_wait(release_stale, DISPATCH_TIME_FOREVER);
+    }
+    return pthread_mutex_lock(lock);
+}
+static int scheduled_unlock(pthread_mutex_t *lock) {
+    int result = pthread_mutex_unlock(lock);
+    if (!stale_worker && force_ui_unlock) {
+        force_ui_unlock = 0;
+        dispatch_semaphore_signal(release_stale);
+        dispatch_semaphore_wait(stale_done, DISPATCH_TIME_FOREVER);
+    }
+    return result;
+}
+#define pthread_mutex_lock scheduled_lock
+#define pthread_mutex_unlock scheduled_unlock
 ''' + declarations + '\n' + functions + '\nstatic BOOL overlay_hides_touch(void) {' + callback + r'''
+}
+static void *guest_poll(void *unused) {
+    (void)unused;
+    @autoreleasepool {
+        stale_worker = pause_stale_lock = 1;
+        pads_refresh();
+        dispatch_semaphore_signal(stale_done);
+    }
+    return NULL;
 }
 int main(void) {
     @autoreleasepool {
@@ -84,6 +119,23 @@ int main(void) {
         assert(!overlay_hides_touch());
         assert(xh_host_sdl_get_gamepads(16, 8) == 1); /* permanent touch slot */
         assert(xh_host_sdl_open_gamepad(0) == 0 && xh_host_sdl_open_gamepad(9) == 0);
+
+        /* A poll that began before disconnect must not restore its stale
+         * primary after the UI refreshed, or touch stays hidden without
+         * another controller notification. Player two still owns slot two. */
+        connected = @[a, b];
+        assert(xh_host_sdl_get_gamepads(16, 8) == 2);
+        stale_at_lock = dispatch_semaphore_create(0);
+        release_stale = dispatch_semaphore_create(0);
+        stale_done = dispatch_semaphore_create(0);
+        pthread_t poll;
+        assert(pthread_create(&poll, NULL, guest_poll, NULL) == 0);
+        dispatch_semaphore_wait(stale_at_lock, DISPATCH_TIME_FOREVER);
+        connected = @[b];
+        force_ui_unlock = 1;
+        assert(!overlay_hides_touch());
+        assert(pthread_join(poll, NULL) == 0);
+        assert(pads[1] == nil && pads[2] == b);
     }
     return 0;
 }
@@ -95,7 +147,7 @@ int main(void) {
                                     '-pthread', '-o', str(binary)], input=source, text=True,
                                    capture_output=True)
             self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
-            run = subprocess.run([str(binary)], capture_output=True, text=True)
+            run = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
 
 
