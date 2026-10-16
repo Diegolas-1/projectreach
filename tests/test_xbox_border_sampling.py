@@ -16,7 +16,8 @@ border = guest.border_sampling
 
 class BorderSamplingTests(unittest.TestCase):
     def test_anchors_refuse_missing_or_ambiguous_inputs(self):
-        for edits in (border.RENDERER_EDITS, border.SHADER_EDITS):
+        for edits in (border.RENDERER_EDITS, border.SHADER_EDITS,
+                      border.GLES_RENDERER_EDITS, border.GLES_SHADER_EDITS):
             original = b'\n'.join(a for a, _ in edits)
             border.apply_edits(original, edits)
             for anchor, _ in edits:
@@ -27,12 +28,34 @@ class BorderSamplingTests(unittest.TestCase):
             border.adapt_shader(b'changed upstream')
 
     def test_old_recipe_stays_identical_and_border_changes_identity(self):
-        self.assertEqual(guest.identity('render-water-v1')['recipe_sha256'],
+        self.assertEqual(guest.identity('render-water-v1', '13c14df95c63156429e96a9694bb9cecd0379228')['recipe_sha256'],
                          'ab7a4178dd3ab4363cc5ab7203e84b5acebecf6ed5af2c1e26c2c30a12302db2')
         self.assertNotEqual(guest.identity('render-border-v1'), guest.identity('render-water-v1'))
         self.assertIn('render-border-v1', guest.COUNTED_ADAPTATIONS)
         # Uniform updates must not be skipped by the unrelated cached serial.
         self.assertIn(b'uniform_vec4(entry->hp_border_state', border.RENDERER_EDITS[-1][1])
+
+    def test_gles_shader_and_uniforms_are_a_distinct_guarded_recipe(self):
+        renderer = border.GLES_RENDERER_SHA256
+        source = b'\n'.join(a for a, _ in border.GLES_SHADER_EDITS)
+        with patch.object(border, 'GLES_SHADER_SHA256', hashlib.sha256(source).hexdigest()):
+            shader = border.adapt_shader(source, renderer)
+            self.assertIn(b'#ifdef HALO_GLES\n', shader)
+            self.assertNotIn(b'HALO_ANDROID', shader)
+            self.assertIn(b'hp_border_sample(tex%d', shader)
+            self.assertIn(b'uniform vec4 hp_border_state[4]', shader)
+            with self.assertRaises(ValueError):
+                border.adapt_shader(source)
+            with self.assertRaises(ValueError):
+                border.adapt_shader(source + b'unreviewed change', renderer)
+        self.assertNotEqual(border.recipe(renderer), border.recipe())
+        # The draw's border values reach the selected program even when the
+        # ordinary uniforms are cached, without dropping source-blend uploads.
+        anchor, replacement = border.GLES_RENDERER_EDITS[-1]
+        self.assertEqual(anchor, border.GLES_UPLOAD_ANCHOR)
+        self.assertLess(replacement.index(b'uniform_vec4(entry->hp_border_state'),
+                        replacement.index(b'if (key.source_blend'))
+        self.assertEqual(replacement.count(b'state_program(entry->program);'), 1)
 
     def test_two_sources_restore_on_failure_and_preserve_concurrent_edit(self):
         renderer = b'\n'.join((guest.ANCHOR, guest.FILTER_ANCHOR, guest.COUNT_ANCHOR,

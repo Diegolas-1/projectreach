@@ -1,5 +1,5 @@
 {
-  "revision": "7124534a4bbf19c12b1219f329063052114defab",
-  "release": "build-170",
-  "note": "Engine snapshot for this HaloPad source release: OpenCE build 170, network version 25. Moving upstream releases do not change this record; online compatibility follows the signed network policy (scripts/xbox/network_policy.py)."
+  "revision": "8102e711c353068d22d62efe6bf67ebc8a90a22e",
+  "release": "build-206",
+  "note": "OpenCE build 206, network version 29, with automatic custom-map sharing. Candidate engine for the next HaloPad source release; see docs/STATUS.md for validation. Moving upstream releases do not change this record."
 }

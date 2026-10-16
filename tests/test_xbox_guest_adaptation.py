@@ -125,6 +125,98 @@ int main(void) {
         self.assertEqual(result.returncode, 0, result.stderr)
         subprocess.run([str(binary)], check=True, capture_output=True)
 
+    def test_gles_visibility_requires_the_reviewed_async_shape(self):
+        for count, atomic in ((1, 1), (0, 1), (2, 1), (1, 0), (1, 2)):
+            original = (adapter.ANCHOR + adapter.FILTER_ANCHOR +
+                        adapter.ASYNC_COUNT_ANCHOR * count + adapter.ATOMIC_ANCHOR * atomic)
+            digest = hashlib.sha256(original).hexdigest()
+            with patch.object(adapter, 'SOURCE_SHA256', digest), \
+                    patch.object(adapter.border_sampling, 'GLES_RENDERER_SHA256', digest):
+                if (count, atomic) == (1, 1):
+                    modified = adapter.adapted_source(original, 'render-visibility-v1')
+                    self.assertIn(adapter.ASYNC_COUNT_REPLACE, modified)
+                    self.assertNotIn(adapter.COUNT_INSERT, modified)
+                    self.assertIn(adapter.ATOMIC_REPLACE, modified)
+                else:
+                    with self.assertRaisesRegex(ValueError, 'visibility input changed'):
+                        adapter.adapted_source(original, 'render-visibility-v1')
+
+    def test_async_counting_preserves_available_and_cached_results(self):
+        # Exercise the inserted fragment inside the newer query lifecycle. A
+        # query still on the GPU must return the last completed count, and a
+        # consumed result must not be fetched (or divided by its area) twice.
+        source = r'''
+#include <assert.h>
+#include <stdint.h>
+#define HALO_ANDROID 1
+#define HALO_GLES 1
+typedef unsigned GLuint;
+enum { GL_QUERY_RESULT_AVAILABLE=1, GL_QUERY_RESULT=2, VISIBILITY_ALL_SAMPLES=999999 };
+static struct {
+    unsigned queries[2], visibility_known[2];
+    int visibility_unread[2], query_pending[2], gl_ready;
+    float query_area[2];
+} device;
+static unsigned ready, raw, polls, reads;
+static void glGetQueryObjectuiv(unsigned id, unsigned token, unsigned *out) {
+    assert(id == 9 || id == 10);
+    if (token == GL_QUERY_RESULT_AVAILABLE) { polls++; *out=ready; }
+    else { assert(token == 0x48504356u && ready); reads++; *out=raw; }
+}
+static void query(unsigned index, unsigned *result) {
+    unsigned available=0, samples=0;
+    if (!device.gl_ready || !device.query_pending[index]) {
+        if (result) *result=0;
+        return;
+    }
+    if (device.visibility_unread[index]) {
+        glGetQueryObjectuiv(device.queries[index], GL_QUERY_RESULT_AVAILABLE, &available);
+        if (available) {
+''' + adapter.ASYNC_COUNT_REPLACE.decode() + r'''
+            if (samples) samples=VISIBILITY_ALL_SAMPLES;
+#else
+            samples=visibility_unscaled(samples, index);
+#endif
+            device.visibility_known[index]=samples;
+            device.visibility_unread[index]=0;
+        }
+    }
+    if (result) *result=device.visibility_known[index];
+}
+int main(void) {
+    unsigned result=999;
+    device.queries[0]=9; device.queries[1]=10;
+    query(0, &result); assert(result==0 && polls==0 && reads==0);
+    device.gl_ready=1;
+    query(0, &result); assert(result==0 && polls==0 && reads==0);
+    for (unsigned index=0; index<2; index++) {
+        device.query_pending[index]=device.visibility_unread[index]=1;
+        device.visibility_known[index]=42+index;
+        device.query_area[index]=index ? 4.0f : 1.0f;
+        ready=0; query(index, &result);
+        assert(result==42+index && device.visibility_unread[index]);
+        raw=928*(index ? 4 : 1); ready=1;
+        query(index, &result); assert(result==928 && !device.visibility_unread[index]);
+        unsigned consumed_reads=reads, consumed_polls=polls;
+        raw=777; ready=0; query(index, &result);
+        assert(result==928 && reads==consumed_reads && polls==consumed_polls);
+        device.visibility_unread[index]=1;
+        query(index, &result); assert(result==928 && device.visibility_unread[index]);
+        ready=1; raw=0; query(index, &result);
+        assert(result==0 && !device.visibility_unread[index]);
+    }
+    device.visibility_unread[1]=1; raw=7;
+    query(1, 0); assert(device.visibility_known[1]==2 && !device.visibility_unread[1]);
+    query(1, &result); assert(result==2);
+}
+'''
+        binary = self.root / 'async-counted-visibility'
+        compiled = subprocess.run(['clang', '-x', 'c', '-', '-std=c11', '-Wall', '-Werror',
+                                   '-fsanitize=address,undefined', '-o', str(binary)],
+                                  input=source, text=True, capture_output=True)
+        self.assertEqual(compiled.returncode, 0, compiled.stderr)
+        subprocess.run([str(binary)], check=True, capture_output=True)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

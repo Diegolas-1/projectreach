@@ -10,6 +10,9 @@ import pathlib
 
 SHADER = pathlib.Path('port/linux/src/nv2a_psh.c')
 SHADER_SHA256 = '504d1d854e97612db322ce8e0f8bf89749ee63352067dfe190f3f1528b3dc054'
+# Exact build206 input: GLES is now independent of the Android platform.
+GLES_RENDERER_SHA256 = '693b1aff55e875c07e4c23703e3af134ef40a0e77fe0512ce19e2ba632db07dc'
+GLES_SHADER_SHA256 = 'ca415f565417b484a851585a2b6685aab545f5ab873e711eaa9dfc6a9342a588'
 
 GLSL = '''uniform vec4 hp_border_state[4];
 uniform vec4 hp_border_color[4];
@@ -84,8 +87,27 @@ SHADER_EDITS = (
     (HELPER_ANCHOR, b'#ifdef HALO_ANDROID\n\txgpu_text_append(&text, ' + json.dumps(GLSL).encode() + b');\n#endif\n' + HELPER_ANCHOR),
 )
 
-def recipe():
-    return SHADER_SHA256.encode() + b''.join(a + b for a, b in (*RENDERER_EDITS, *SHADER_EDITS))
+# Build206 has a blend uniform before the ordinary uniforms. Upload border
+# state immediately after binding the program, preserving that upstream work.
+GLES_UPLOAD_ANCHOR = b'\tstate_program(entry->program);\n\tif (key.source_blend && entry->blend_constant >= 0)\n'
+GLES_RENDERER_EDITS = (*RENDERER_EDITS[:-1], (
+    GLES_UPLOAD_ANCHOR,
+    RENDERER_EDITS[-1][1].replace(b'#ifdef HALO_ANDROID\n',
+                                b'\tif (key.source_blend && entry->blend_constant >= 0)\n'),
+))
+GLES_SHADER_EDITS = tuple((a.replace(b'HALO_ANDROID', b'HALO_GLES'),
+                          b.replace(b'HALO_ANDROID', b'HALO_GLES')) for a, b in SHADER_EDITS)
+
+
+def renderer_edits(renderer=None):
+    return GLES_RENDERER_EDITS if renderer == GLES_RENDERER_SHA256 else RENDERER_EDITS
+
+
+def recipe(renderer=None):
+    gles = renderer == GLES_RENDERER_SHA256
+    shader = GLES_SHADER_SHA256 if gles else SHADER_SHA256
+    edits = (*renderer_edits(renderer), *(GLES_SHADER_EDITS if gles else SHADER_EDITS))
+    return shader.encode() + b''.join(a + b for a, b in edits)
 
 # Reviewed later forms of an anchor (the renderer's own hash still gates each revision).
 # Build 119 resolves every stage's texture before binding (two declarations above
@@ -114,9 +136,11 @@ def apply_edits(original, edits):
         result = result.replace(anchor, replacement)
     return result
 
-def adapt_shader(original):
+def adapt_shader(original, renderer=None):
     # OpenCE's newest, unreviewed release (scripts/builder/build.sh): the anchors alone decide
     latest = os.environ.get('HALOPAD_XBOX_LATEST') == '1'
-    if hashlib.sha256(original).hexdigest() != SHADER_SHA256 and not latest:
+    gles = renderer == GLES_RENDERER_SHA256
+    expected = GLES_SHADER_SHA256 if gles else SHADER_SHA256
+    if hashlib.sha256(original).hexdigest() != expected and not latest:
         raise ValueError('Border shader input changed; review upstream first')
-    return apply_edits(original, SHADER_EDITS)
+    return apply_edits(original, GLES_SHADER_EDITS if gles else SHADER_EDITS)

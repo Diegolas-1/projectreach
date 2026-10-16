@@ -136,6 +136,18 @@ for f in posix_files posix_net; do
 	$CC -O2 -w -include "$ROOT/port/xbox/xg_darwin_compat.h" -I"$ROOT/port/xbox/compat" -I"$ENGINE/port/linux/src" \
 		-c "$ENGINE/port/linux/src/$f.c" -o "$OBJ/upstream_$f.o"
 done
+# Remove only this optional dependency's generated objects when switching engines.
+rm -f "$OBJ/upstream_posix_dtls.o" "$OBJ"/mbedtls_*.o
+if [ -f "$ENGINE/port/linux/src/posix_dtls.c" ]; then
+    MBEDTLS="$ENGINE/port/third_party/mbedtls"
+    $CC -O2 -include "$ROOT/port/xbox/xg_darwin_compat.h" -I"$ENGINE/port/linux/src" \
+        -I"$MBEDTLS/include" -I"$MBEDTLS/library" \
+        -c "$ENGINE/port/linux/src/posix_dtls.c" -o "$OBJ/upstream_posix_dtls.o"
+    for source in "$MBEDTLS"/library/*.c; do
+        $CC -O2 -w -I"$MBEDTLS/include" -I"$MBEDTLS/library" \
+            -c "$source" -o "$OBJ/mbedtls_$(basename "$source" .c).o"
+    done
+fi
 $CC -c "$ROOT/port/xbox/xg_runtime.s" -o "$OBJ/xg_runtime.o"
 [ "$OBJ/guest.o" -nt "$OUT/guest.s" ] || $CC -c "$OUT/guest.s" -o "$OBJ/guest.o"
 # the engine as a library for HaloPad's own app (scripts/build-ios-app.py links

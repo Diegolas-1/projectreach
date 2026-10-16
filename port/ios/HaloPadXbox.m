@@ -983,7 +983,7 @@ static UIView *chooser_pill(NSString *text, UIColor *color)
 - (void)showUpdate
 {
     unsigned int engine = xbox_network_version();
-    NSString *message = [NSString stringWithFormat:@"Installed: OpenCE %@.\n\n%@ HaloPad downloads tested online compatibility updates by itself, so most new OpenCE builds need no app update. New OpenCE builds never expire your game.\n\nWhen OpenCE changes how online play works, HaloPad needs a new release. Get it from Releases and install it over the existing app with the same signing identity; do not delete HaloPad. Your imported disc and profiles stay, though an engine change may require restarting a level.\n\nIf you build with PadMint, each HaloPad release builds its own tested engine.",
+    NSString *message = [NSString stringWithFormat:@"Installed: OpenCE %@.\n\n%@ Online games require matching network versions. Compatibility checks cannot add engine features or support a changed protocol. Your campaign never expires.\n\nTo get a newer engine and its features, install a HaloPad update from Releases over the existing app with the same signing identity; do not delete HaloPad. Your imported disc and profiles stay, though an engine change may require restarting a level.\n\nIf you build with PadMint, each HaloPad release builds its own tested engine.",
         xbox_release(xbox_build()), HPNetworkPolicySummary(engine, engine ? HPNetworkPolicyCached(engine) : nil)];
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"HaloPad Updates" message:message preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"HaloPad Releases" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {

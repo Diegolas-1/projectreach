@@ -44,6 +44,9 @@ REVIEWED_RENDERERS = {
     # Build125 (network version 16): co-op and netcode only; this file is unchanged.
     '13c14df95c63156429e96a9694bb9cecd0379228':
         'af1cec45a1919ccf4b6129ac61c3f28132fd9f97da85cf092a0d3a45cd51aaeb',
+    # Build206 uses HALO_GLES, cached samplers and asynchronous visibility.
+    '8102e711c353068d22d62efe6bf67ebc8a90a22e':
+        '693b1aff55e875c07e4c23703e3af134ef40a0e77fe0512ce19e2ba632db07dc',
 }
 ENGINE_LOCK = pathlib.Path(__file__).resolve().parents[2] / 'config/xbox-engine.lock.json'
 ENGINE_CHECKOUT = pathlib.Path(__file__).resolve().parents[2] / 'ref/xbox-build/vol/engine'
@@ -106,6 +109,7 @@ FILTER_INSERT = b'''\t/* HaloPad opt-in world filtering, independent of target r
 # scope. Changing a cached sampler would also change other draws using it.
 CACHED_FILTER_RENDERERS = {
     'ddf4e9bbeda3d8f3fdf5258cfaa65f8d54122fb25c6e1eecca89beb8a0022aa4',
+    '693b1aff55e875c07e4c23703e3af134ef40a0e77fe0512ce19e2ba632db07dc',
 }
 CACHED_FILTER_ANCHOR = b'\tinputs[10] = hires;\n'
 CACHED_FILTER_INSERT = (b'#ifdef HALO_ANDROID\n' + FILTER_INSERT
@@ -161,6 +165,30 @@ COUNT_INSERT = b'''#ifdef HALO_ANDROID
 ATOMIC_ANCHOR = b'xgpu_capabilities.atomic_counters = counters > 0;'
 ATOMIC_REPLACE = b'xgpu_capabilities.atomic_counters = FALSE; /* paired counted query backend */'
 
+# Build206 consumes only an available query and then caches its result. Keep
+# those updates and the nonblocking fallback; the old early return would leave
+# visibility_unread set and return zero when the next query is still pending.
+ASYNC_COUNT_ANCHOR = b'\t\t\tglGetQueryObjectuiv(device.queries[index], GL_QUERY_RESULT, &samples);\n#ifdef HALO_GLES\n'
+ASYNC_COUNT_REPLACE = b'''#ifdef HALO_ANDROID
+\t\t\tglGetQueryObjectuiv(device.queries[index], 0x48504356u /* HaloPad counted bridge v1 */, &samples);
+\t\t\t{
+\t\t\t\tfloat area = device.query_area[index];
+\t\t\t\tif (area > 1.0f) samples = (GLuint)((double)samples / area + 0.5);
+\t\t\t}
+#else
+\t\t\tglGetQueryObjectuiv(device.queries[index], GL_QUERY_RESULT, &samples);
+#endif
+#if defined(HALO_ANDROID)
+\t\t\t/* Already counted and normalized by the paired host bridge. */
+#elif defined(HALO_GLES)
+'''
+
+
+def counting_recipe(renderer):
+    if renderer == border_sampling.GLES_RENDERER_SHA256:
+        return ASYNC_COUNT_ANCHOR, ASYNC_COUNT_REPLACE
+    return COUNT_ANCHOR, COUNT_INSERT
+
 # ES mip assembly runs inside bind_textures, after the current draw's target
 # and raster state were applied. Restore real GL state now, not next draw.
 WATER_SAVE_ANCHOR = b'\tstatic GLuint draw_framebuffer;\n'
@@ -201,6 +229,10 @@ REVIEWED_CAMERA = {
         'fac7667e391ace1ea83d114797dfdcd749646c42a88963462418deacb7e121de',
     '13c14df95c63156429e96a9694bb9cecd0379228':
         'fac7667e391ace1ea83d114797dfdcd749646c42a88963462418deacb7e121de',
+    # The direct camera guard is unchanged; newer scripted-camera/pose fixes
+    # stay upstream's responsibility and are not altered by this adaptation.
+    '8102e711c353068d22d62efe6bf67ebc8a90a22e':
+        'c65fa8916f7a40e8c77f7fa4a56138b8402a9ca13e7bb068e09660174ec4d16a',
 }
 CAMERA_ANCHOR = b'#ifdef HALO_ANDROID\n\t(void)local_player_index;\n\treturn observer;\n#else\n'
 CAMERA_REPLACE = (b'#if 0 /* HaloPad: the view turns the frame the finger moves (display.direct_camera) */\n'
@@ -229,11 +261,11 @@ def identity(name=None, revision=None):
     if name in QUALITY_ADAPTATIONS:
         recipe += b''.join(filtering_recipe(renderer, revision))
     if name in COUNTED_ADAPTATIONS:
-        recipe += COUNT_ANCHOR + COUNT_INSERT + ATOMIC_ANCHOR + ATOMIC_REPLACE
+        recipe += b''.join(counting_recipe(renderer)) + ATOMIC_ANCHOR + ATOMIC_REPLACE
     if name in WATER_ADAPTATIONS:
         recipe += WATER_SAVE_ANCHOR + WATER_SAVE + WATER_RESTORE_ANCHOR + WATER_RESTORE
     if name in BORDER_ADAPTATIONS:
-        recipe += border_sampling.recipe()
+        recipe += border_sampling.recipe(renderer)
     if name in INPUT_ADAPTATIONS:
         recipe += profile_input.recipe()
     if name in PRESENT_ADAPTATIONS:
@@ -242,7 +274,7 @@ def identity(name=None, revision=None):
     if name in CAMERA_ADAPTATIONS:
         camera = REVIEWED_CAMERA.get(revision) or _latest_hash(revision, CAMERA_SOURCE)
         if not camera:
-            raise ValueError('Direct camera is reviewed only for builds 85, 119 and 125; review render_interpolation.c first')
+            raise ValueError('Direct camera is reviewed only for builds 85, 119, 125 and 206; review render_interpolation.c first')
         recipe += CAMERA_ANCHOR + CAMERA_REPLACE
         result['upstream_camera_sha256'] = camera
     if name in NETWORK_ADAPTATIONS:
@@ -274,9 +306,11 @@ def adapted_source(original, name='render-scale-v1'):
                        else filter_insert + filter_anchor)
         modified = modified.replace(filter_anchor, replacement)
     if name in COUNTED_ADAPTATIONS:
-        if original.count(COUNT_ANCHOR) != 1 or original.count(ATOMIC_ANCHOR) != 1:
+        count_anchor, count_insert = counting_recipe(expected)
+        if original.count(count_anchor) != 1 or original.count(ATOMIC_ANCHOR) != 1:
             raise ValueError('Renderer visibility input changed; review upstream first')
-        modified = modified.replace(COUNT_ANCHOR, COUNT_INSERT + COUNT_ANCHOR)
+        replacement = count_insert + count_anchor if count_anchor == COUNT_ANCHOR else count_insert
+        modified = modified.replace(count_anchor, replacement)
         modified = modified.replace(ATOMIC_ANCHOR, ATOMIC_REPLACE)
     if name in WATER_ADAPTATIONS:
         if original.count(WATER_SAVE_ANCHOR) != 1 or original.count(WATER_RESTORE_ANCHOR) != 1:
@@ -284,7 +318,7 @@ def adapted_source(original, name='render-scale-v1'):
         modified = modified.replace(WATER_SAVE_ANCHOR, WATER_SAVE_ANCHOR + WATER_SAVE)
         modified = modified.replace(WATER_RESTORE_ANCHOR, WATER_RESTORE)
     if name in BORDER_ADAPTATIONS:
-        modified = border_sampling.apply_edits(modified, border_sampling.RENDERER_EDITS)
+        modified = border_sampling.apply_edits(modified, border_sampling.renderer_edits(expected))
     if name in PRESENT_ADAPTATIONS:
         if original.count(PRESENT_ANCHOR) != 1:
             raise ValueError('Renderer presentation input changed; review upstream first')
@@ -306,7 +340,8 @@ def renderer_adaptation(engine, adaptation):
     if adaptation['name'] in BORDER_ADAPTATIONS:
         shader_path = engine / border_sampling.SHADER
         shader = shader_path.read_bytes()
-        changes.append((shader_path, shader, border_sampling.adapt_shader(shader)))
+        changes.append((shader_path, shader, border_sampling.adapt_shader(
+            shader, adaptation['upstream_renderer_sha256'])))
     if adaptation['name'] in INPUT_ADAPTATIONS:
         changes.extend(profile_input.changes(engine))
     if adaptation['name'] in NETWORK_ADAPTATIONS:

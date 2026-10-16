@@ -14,7 +14,8 @@ import sys
 DECL = re.compile(r"^(.+?)\s*\bhostgl_(gl\w+)\((.*)\);$")
 # pointer arguments that are buffer offsets, not addresses
 OFFSETS = {("glVertexAttribPointer", 5), ("glVertexAttribIPointer", 4),
-           ("glDrawElements", 3), ("glDrawElementsBaseVertex", 3)}
+           ("glDrawElements", 3), ("glDrawElementsBaseVertex", 3),
+           ("glDrawElementsBaseVertexEXT", 3), ("glDrawElementsBaseVertexOES", 3)}
 C_WORDS = {"long", "int", "char", "void", "unsigned", "short", "float", "double", "const", "signed"}
 # Calls that can stall a frame, timed for the renderer health log (xg_ios.m):
 # 0 shader compiles and program links, 1 texture uploads, 2 buffer uploads,
@@ -23,6 +24,7 @@ TIMED = {"glCompileShader": 0, "glLinkProgram": 0, "glTexImage2D": 1, "glTexSubI
          "glTexImage3D": 1, "glTexSubImage3D": 1, "glCompressedTexImage2D": 1,
          "glCompressedTexSubImage2D": 1, "glGenerateMipmap": 1, "glBufferData": 2, "glBufferSubData": 2,
          "glDrawArrays": 3, "glDrawElements": 3, "glDrawElementsBaseVertex": 3,
+         "glDrawElementsBaseVertexEXT": 3, "glDrawElementsBaseVertexOES": 3,
          "glDrawArraysInstanced": 3, "glDrawElementsInstanced": 3, "glDrawRangeElements": 3}
 
 
@@ -141,7 +143,8 @@ def main():
                 lines.append("\txg_gl_trace_query_end(a0);")
             if name == "glDrawArrays":
                 lines.append("\txg_gl_trace_query_draw(a0, a1, a2);")
-            if name in ("glDrawElements", "glDrawElementsBaseVertex"):
+            if name in ("glDrawElements", "glDrawElementsBaseVertex",
+                        "glDrawElementsBaseVertexEXT", "glDrawElementsBaseVertexOES"):
                 lines.append("\txg_gl_trace_query_draw(0, 0, 0);")
             if name != "glGetError":
                 lines.append('\tif (check_errors) check("%s");' % name)

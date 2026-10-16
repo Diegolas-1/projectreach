@@ -1,6 +1,82 @@
 # HaloPad status
 
-## Current release candidate: 0.3.8 Xbox-only beta
+## Unreleased: OpenCE 206 / HaloPad 0.3.10
+
+**2026-10-16: engine update, policy correction and real custom-map downloads verified; unreleased.**
+The engine pin is OpenCE 206 (`8102e711c353068d22d62efe6bf67ebc8a90a22e`),
+network version 29. This brings upstream's automatic custom-map and resource-map
+downloads to the Xbox edition. The PC Custom Edition engine is unchanged. No game
+release or tag has been published.
+
+The native bridge now implements the DTLS/HMAC imports and builds upstream's Mbed
+TLS dependencies on Mac and iOS. Reviewed renderer and input adaptations cover
+206 while retaining the older supported identities. A physical iPhone run caught
+an additional draw-call alias regression: EXT/OES base-vertex index-buffer offsets
+were being translated as guest pointers. The bridge now handles these like the
+core entry point; an executable regression fails before the fix and passes after.
+Build 26 is rejected for rendering; **build 27** includes the correction.
+
+Both build-27 packages pass manifest, contents, notices and signing audits. The
+candidate run passes **370 Xbox tests and 23 builder tests**. Native DTLS tests
+also exercise real Mbed TLS handshakes, fingerprints, HMAC, bidirectional data,
+invalid handles, close/double-close, packet loss and clock wrap. The packaged Mac
+app loads the private CE Blood Gulch fixture and renders gameplay with zero GL
+errors. Initial incorrect Mac fixture paths were outside its UUID-named sandbox;
+the successful run uses an isolated directory inside its actual container.
+
+Physical testing is limited to the **iPhone 14**, as requested. HaloPad was absent
+before the first installation. Before upgrading the test installation from build
+26 to 27, two independent reads matched all 71 files (866,304,971 bytes). After
+installation, all game data, saves and preferences remained identical; only iOS
+launch snapshots changed. Build 27 renders the campaign tutorial room and NPC;
+630 seconds of campaign reporting have zero GL errors, with steady windows near
+60 fps after loading. This is not a completed campaign or a full touch-control test.
+
+Real internet transfers now pass on the packaged Mac app and physical iPhone:
+
+- Starting without custom maps or CE resources, the iPhone downloaded Death
+  Island and all three resources (183,811,669 bytes) in 198 seconds, using up to
+  three peers. All four SHA256 hashes match independent preexisting fixtures;
+  no partial files remain. It entered the public match with four players, and
+  advancing simulation ticks and player events confirm continued multiplayer.
+  QuickTime captured the download progress and transition into the rendered map.
+  The latest 330 seconds of render reporting have zero GL errors. Stock maps and
+  the unrelated save sentinel remain unchanged. Cached iPhone rejoining also
+  produced over 120 advancing gameplay ticks without requesting another download.
+- The Mac downloaded the same four files, verified identical hashes and rendered
+  the map with working movement. After an interrupted earlier download, it reused
+  222 verified bitmap pieces offered by another server. Independent piece hashes
+  confirm those existing bytes were preserved through completion.
+- Mac cached rejoining produced 77 gameplay ticks with no new download and
+  unchanged hashes. With a different existing `deathisland.map`, it preserved
+  that file and downloaded `deathisland_451254bb.map`, then entered gameplay;
+  resources, stock UI, save sentinel and the original fixture stayed unchanged.
+
+The LAN attempt did not discover the private host; these successful tests use
+OpenCE's actual internet tunnel. The controlled two-process LAN harness is still
+available, but is not claimed as a completed local matrix. See
+[XBOX-MAP-SHARING-TEST.md](XBOX-MAP-SHARING-TEST.md). Host seeding, iOS background
+recovery, full touch/controller gameplay, upgrades from the public release and
+the clean PadMint player checks remain separate release gates. No iPad was tested.
+
+The live signed compatibility policy was corrected separately: serial
+`1792107821` restricts engines 24 and 25 to their actual versions. The new reader
+also clamps stale widened rows. Engine 29 safely uses exact matching without a
+published row. The old scheduled policy workflow remains disabled until the
+corrected code reaches the default branch; see [UPDATE-STRATEGY.md](UPDATE-STRATEGY.md).
+
+After testing, the iPhone test library was moved intact to the normal `Halo Xbox`
+folder, and the app was reopened without test launch variables. It contains the
+menu map, the first campaign map and the downloaded CE map/resources; it is not
+a complete disc import. All test clients were stopped.
+
+Private evidence: `generated/xbox-candidates/runs/27-build-206/`,
+`generated/opence-206-validation/` and `ref/xbox-build/map-sharing-206-iphone/`.
+These contain local game inputs or device details and must not be published.
+
+## Historical validation: 0.3.8–0.3.9
+
+The dated policy decisions below are superseded by the exact-version correction above.
 
 **0.3.9, 2026-10-10: both editions build again.** Since `e4a3a53`, the builder staged the
 Custom Edition game package as `game.zip`, and `halopad_package.py` refuses any name
@@ -406,6 +482,11 @@ Developer; a paid account does not bypass the pending Program License Agreement.
 Chris was asked to accept that agreement. Consumer install/upgrade and its actual
 entitlements remain unverified; the successful development-profile install above
 is separate evidence.
+
+After testing, the iPhone test library was moved intact to the normal `Halo Xbox`
+folder, and the app was reopened without test launch variables. It contains the
+menu map, the first campaign map and the downloaded CE map/resources; it is not
+a complete disc import. All test clients were stopped.
 
 Private evidence: `generated/device-update-20261008/`, `generated/update-loop-20261008/`, `generated/xbox-candidates/`, and `generated/release-acceptance-20261007/`, including backup/readback
 audits, the build-4 crash report, build-5 signature and campaign logs, and Mac

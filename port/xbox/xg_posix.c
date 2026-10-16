@@ -261,6 +261,37 @@ int xh_hostposix_upnp_forward_udp(unsigned short port,
 
 void xh_hostposix_upnp_stop_forwarding_udp(unsigned short port) { (void)port; }
 
+/* ---------- OpenCE 206 WebRTC transport (native Mbed TLS, guest buffers) */
+
+#if XG_ENGINE_DTLS
+int posix_dtls_fingerprint(unsigned char *);
+int posix_dtls_open(void);
+void posix_dtls_close(int);
+void posix_dtls_input(int, const void *, int);
+int posix_dtls_receive(int, posix_ulong, void *, int);
+int posix_dtls_send(int, const void *, int);
+int posix_dtls_output(int, void *, int);
+int posix_dtls_peer_fingerprint(int, unsigned char *);
+void posix_hmac_sha1(const void *, int, const void *, int, unsigned char *);
+
+int xh_hostposix_dtls_fingerprint(uint32_t fingerprint)
+{ return posix_dtls_fingerprint(GP(fingerprint)); }
+int xh_hostposix_dtls_open(void) { return posix_dtls_open(); }
+void xh_hostposix_dtls_close(int handle) { posix_dtls_close(handle); }
+void xh_hostposix_dtls_input(int handle, uint32_t data, int size)
+{ posix_dtls_input(handle, GP(data), size); }
+int xh_hostposix_dtls_receive(int handle, posix_ulong now, uint32_t buffer, int size)
+{ return posix_dtls_receive(handle, now, GP(buffer), size); }
+int xh_hostposix_dtls_send(int handle, uint32_t data, int size)
+{ return posix_dtls_send(handle, GP(data), size); }
+int xh_hostposix_dtls_output(int handle, uint32_t buffer, int size)
+{ return posix_dtls_output(handle, GP(buffer), size); }
+int xh_hostposix_dtls_peer_fingerprint(int handle, uint32_t fingerprint)
+{ return posix_dtls_peer_fingerprint(handle, GP(fingerprint)); }
+void xh_hostposix_hmac_sha1(uint32_t key, int key_size, uint32_t data, int size, uint32_t digest)
+{ posix_hmac_sha1(GP(key), key_size, GP(data), size, GP(digest)); }
+#endif
+
 /* ---------- the process and the desktop */
 
 int xh_hostposix_command_line_argument(int index, uint32_t buffer, posix_ulong size)
