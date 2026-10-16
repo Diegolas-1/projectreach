@@ -57,7 +57,7 @@ def snapshot(folder):
 def copy_file(source, target):
     """APFS copy-on-write when available, never a hard link to player input."""
     target.parent.mkdir(parents=True, exist_ok=True)
-    if target.exists():
+    if target.exists() or target.is_symlink():
         raise ValueError(f'Refusing to replace {target}')
     if sys.platform == 'darwin':
         attempt = subprocess.run(['cp', '-c', str(source), str(target)], capture_output=True)
@@ -96,6 +96,27 @@ def verify_addresses(host, client):
                            (socket.SOCK_STREAM, 5153)):
             with socket.socket(socket.AF_INET, kind) as probe:
                 probe.bind((address, port))
+    verify_local_route(host, client)
+
+
+def verify_local_route(host, client):
+    """Bindable interfaces need not be a bidirectionally routable local pair."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as first, \
+                socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as second:
+            for endpoint, address in ((first, host), (second, client)):
+                endpoint.bind((address, 0))
+                endpoint.settimeout(2)
+            for sender, receiver in ((first, second), (second, first)):
+                token = os.urandom(16)
+                sender.sendto(token, receiver.getsockname())
+                payload, source = receiver.recvfrom(len(token) + 1)
+                if payload != token or source != sender.getsockname():
+                    raise ValueError('Unexpected response during local UDP route check')
+    except OSError as error:
+        raise ValueError('Local addresses cannot exchange UDP in both directions; '
+                         'choose a bidirectionally routable pair (a Wi-Fi address and '
+                         'a USB link-local address may not work together)') from error
 
 
 def clean_environment(address, peer, role, upload=65536, render=False):
@@ -107,6 +128,8 @@ def clean_environment(address, peer, role, upload=65536, render=False):
                HALO_NET_HOST_PUBLIC='false', HALO_NETWORK_TEST_PUBLIC='false',
                HALO_NET_ALLOW_UPNP='false', HALO_NET_JOIN_FROM_CLIPBOARD='false',
                HALO_NET_VOICE_MODE='off', HALO_NET_VOICE_LOBBY='false',
+               HALO_VOICE_CHAT='off', HALO_VOICE_VOLUME='0',
+               HALO_UPDATE_AUTO='false', HALO_DISCORD_APPLICATION='',
                HALO_NETWORK_TEST='host:custom_maps\\bloodgulch' if role == 'host' else 'join',
                HALO_NETWORK_TEST_START='12', HALO_TEST_INPUT='bot:7',
                HALO_NET_MAP_SHARE_UPLOAD=str(upload), HALO_VOLUME='0')

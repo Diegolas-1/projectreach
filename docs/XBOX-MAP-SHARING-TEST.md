@@ -20,12 +20,15 @@ ports. The default null renderer keeps windows hidden; it is real engine
 networking and gameplay-state evidence, not rendering or physical-device
 acceptance. Add `--render` deliberately to open the pair's windows.
 
-Two distinct, already configured private IPv4 addresses on this Mac are
-required. The engine reserves `127.0.0.1` to mean itself. On macOS arbitrary
-`127.0.0.2`/`.3` addresses are not necessarily bound. Wi-Fi and a tethered
-device's network interface can provide two local addresses without changing
-system network configuration. Check the current interfaces rather than
-reusing an address from an old log.
+Two distinct, already configured private IPv4 addresses on this Mac that
+can exchange UDP in both directions are required. The engine reserves
+`127.0.0.1` to mean itself. On macOS arbitrary `127.0.0.2`/`.3` addresses are
+not necessarily bound. A Wi-Fi address and a USB link-local address can both
+bind while the reverse UDP route fails. The smoke checks that round trip
+before copying fixtures or launching either game. Check the current
+interfaces rather than reusing an address from an old log. When there is
+no routable local pair, use two physical devices for the transfer checks;
+this script does not create interfaces or change system network settings.
 
 ```sh
 python3 scripts/xbox/smoke-map-sharing.py \
@@ -34,8 +37,8 @@ python3 scripts/xbox/smoke-map-sharing.py \
   --out ref/xbox-build/map-sharing-206-<new-run-name>
 ```
 
-No public lobby, online tunnel, UPnP request, clipboard invitation or voice
-capture is enabled. Map sharing, downloading and seeding retain their default
+No public lobby, online tunnel, UPnP request, clipboard invitation, update
+check or voice capture is enabled. Map sharing, downloading and seeding retain their default
 settings. Only the host's upload cap is raised to make the resource transfer
 bounded; the interruption case lowers it to capture a partial file.
 

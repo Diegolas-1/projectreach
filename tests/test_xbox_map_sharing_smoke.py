@@ -5,7 +5,7 @@ import os
 import pathlib
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('map_smoke', ROOT / 'scripts/xbox/smoke-map-sharing.py')
@@ -61,6 +61,8 @@ class MapSharingEvidenceTests(unittest.TestCase):
         self.assertEqual(env['HALO_NET_ONLINE'], 'false')
         self.assertEqual(env['HALO_NET_PUBLIC_LOBBY'], 'false')
         self.assertEqual(env['HALO_NET_ALLOW_UPNP'], 'false')
+        self.assertEqual(env['HALO_VOICE_CHAT'], 'off')
+        self.assertEqual(env['HALO_UPDATE_AUTO'], 'false')
         self.assertEqual(env['HALO_NULL_RENDERER'], '1')
         self.assertNotIn('HALO_NET_MAP_DOWNLOAD', env)
         self.assertNotIn('HALO_NET_MAP_SHARE', env)
@@ -74,6 +76,22 @@ class MapSharingEvidenceTests(unittest.TestCase):
         self.assertEqual(smoke.map_hash(source),
                          'c3f9fbc531ef0e4d8c6410b590207c51004c6511f0c0bc7ae093459f59612ab7')
 
+    def test_local_route_checks_real_bidirectional_udp(self):
+        smoke.verify_local_route('127.0.0.1', '127.0.0.1')
+
+    def test_route_rejects_reverse_send_failure_before_starting_game(self):
+        first, second = MagicMock(), MagicMock()
+        for endpoint in (first, second):
+            endpoint.__enter__.return_value = endpoint
+        first.getsockname.return_value = ('192.168.1.2', 1234)
+        second.getsockname.return_value = ('169.254.1.2', 1235)
+        second.recvfrom.return_value = (b'x' * 16, first.getsockname.return_value)
+        second.sendto.side_effect = OSError(65, 'No route to host')
+        with patch.object(smoke.socket, 'socket', side_effect=[first, second]), \
+                patch.object(smoke.os, 'urandom', return_value=b'x' * 16):
+            with self.assertRaisesRegex(ValueError, 'both directions'):
+                smoke.verify_local_route('192.168.1.2', '169.254.1.2')
+
     def test_copies_never_modify_original_or_replace_destination(self):
         source = self.root / 'source'
         target = self.root / 'copy'
@@ -84,6 +102,17 @@ class MapSharingEvidenceTests(unittest.TestCase):
         self.assertEqual(source.read_bytes(), self.data)
         with self.assertRaises(ValueError):
             smoke.copy_file(source, target)
+
+    def test_copy_refuses_a_dangling_destination_symlink(self):
+        source = self.root / 'source'
+        target = self.root / 'copy'
+        elsewhere = self.root / 'unrelated-player-file'
+        source.write_bytes(self.data)
+        target.symlink_to(elsewhere)
+        with self.assertRaises(ValueError):
+            smoke.copy_file(source, target)
+        self.assertTrue(target.is_symlink())
+        self.assertFalse(elsewhere.exists())
 
 
 if __name__ == '__main__':
