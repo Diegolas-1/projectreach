@@ -1,5 +1,6 @@
 /* Bonjour supplies local unicast peers; the game still owns discovery packets. */
 #import <UIKit/UIKit.h>
+#include <dns_sd.h>
 #include <ifaddrs.h>
 #include <net/if.h>
 #include "xg_host.h"
@@ -32,6 +33,24 @@ static NSString *service_key(NSNetService *service)
 	return [NSString stringWithFormat:@"%@/%@/%@", service.domain, service.type, service.name];
 }
 
+@class XGLANDiscovery;
+@interface XGLANAddressQuery : NSObject
+@property DNSServiceRef reference;
+@property(nonatomic, copy) NSString *hostname;
+@property(nonatomic, strong) NSNetService *service;
+@property(nonatomic, weak) XGLANDiscovery *owner;
+@property(nonatomic, strong) NSMutableDictionary<NSString *, NSData *> *addresses;
+- (void)stop;
+@end
+@implementation XGLANAddressQuery
+- (void)stop
+{
+	/* Creation, callbacks and cancellation all run on the main queue. */
+	if (self.reference) DNSServiceRefDeallocate(self.reference);
+	self.reference = NULL;
+}
+@end
+
 @interface XGLANDiscovery : NSObject <NSNetServiceDelegate, NSNetServiceBrowserDelegate>
 @property BOOL wanted;
 @property NSUInteger retryCount;
@@ -40,10 +59,22 @@ static NSString *service_key(NSNetService *service)
 @property(nonatomic, strong) NSNetServiceBrowser *browser;
 @property(nonatomic, strong) NSMutableDictionary<NSString *, NSNetService *> *services;
 @property(nonatomic, strong) NSMutableDictionary<NSString *, NSArray<NSData *> *> *resolved;
+@property(nonatomic, strong) NSMutableDictionary<NSString *, XGLANAddressQuery *> *queries;
 @property(nonatomic, strong) NSTimer *refresh;
 - (void)start;
 - (void)stop;
+- (void)addressQuery:(XGLANAddressQuery *)query reference:(DNSServiceRef)reference
+	flags:(DNSServiceFlags)flags interface:(uint32_t)interface error:(DNSServiceErrorType)error
+	address:(const struct sockaddr *)address;
 @end
+
+static void resolved_ipv4(DNSServiceRef reference, DNSServiceFlags flags, uint32_t interface,
+	DNSServiceErrorType error, const char *hostname, const struct sockaddr *address, uint32_t ttl, void *context)
+{
+	(void)hostname; (void)ttl;
+	XGLANAddressQuery *query = (__bridge XGLANAddressQuery *)context;
+	[query.owner addressQuery:query reference:reference flags:flags interface:interface error:error address:address];
+}
 
 @implementation XGLANDiscovery
 - (instancetype)init
@@ -51,6 +82,7 @@ static NSString *service_key(NSNetService *service)
 	if ((self = [super init])) {
 		_services = [NSMutableDictionary new];
 		_resolved = [NSMutableDictionary new];
+		_queries = [NSMutableDictionary new];
 		[NSNotificationCenter.defaultCenter addObserver:self selector:@selector(background:)
 			name:UIApplicationDidEnterBackgroundNotification object:nil];
 		[NSNotificationCenter.defaultCenter addObserver:self selector:@selector(foreground:)
@@ -94,6 +126,8 @@ static NSString *service_key(NSNetService *service)
 		[service removeFromRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
 	}
 	[self.services removeAllObjects];
+	for (XGLANAddressQuery *query in self.queries.allValues) [query stop];
+	[self.queries removeAllObjects];
 	[self.resolved removeAllObjects];
 	xg_lan_cache_replace(&peer_cache, NULL, 0);
 	if (self.peerCount) xg_log("LAN Bonjour: 0 peers");
@@ -160,6 +194,7 @@ static NSString *service_key(NSNetService *service)
 	existing.delegate = nil; [existing stop];
 	[existing removeFromRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
 	[self.services removeObjectForKey:key];
+	[self.queries[key] stop]; [self.queries removeObjectForKey:key];
 	[self.resolved removeObjectForKey:key];
 	[self updateSnapshot];
 }
@@ -167,14 +202,64 @@ static NSString *service_key(NSNetService *service)
 {
 	NSString *key = service_key(service);
 	if (!self.browser || self.services[key] != service) return;
-	self.resolved[key] = service.addresses ?: @[];
+	NSString *hostname = service.hostName;
+	/* NSNetService may choose an IPv6-only USB interface even when this host
+	 * also has a Wi-Fi IPv4 address. Query A records across active interfaces.
+	 * Only a local hostname and our fixed marker port may supply game peers. */
+	BOOL local = hostname.length > 7 && [hostname.lowercaseString hasSuffix:@".local."] &&
+		strlen(hostname.UTF8String) == [hostname lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
+	XGLANAddressQuery *query = self.queries[key];
+	if (local && service.port == 5150 && query.reference && [query.hostname isEqualToString:hostname]) return;
+	[query stop]; [self.queries removeObjectForKey:key];
+	[self.resolved removeObjectForKey:key];
+	[self updateSnapshot];
+	if (!local || service.port != 5150) return;
+	query = [XGLANAddressQuery new];
+	query.hostname = hostname; query.service = service; query.owner = self;
+	query.addresses = [NSMutableDictionary new];
+	DNSServiceRef reference = NULL;
+	DNSServiceErrorType error = DNSServiceGetAddrInfo(&reference, 0, kDNSServiceInterfaceIndexAny,
+		kDNSServiceProtocol_IPv4, hostname.UTF8String, resolved_ipv4, (__bridge void *)query);
+	query.reference = reference;
+	self.queries[key] = query;
+	if (!error) error = DNSServiceSetDispatchQueue(reference, dispatch_get_main_queue());
+	if (error) {
+		xg_log("LAN Bonjour: IPv4 query failed (%d)", error);
+		[query stop]; [self.queries removeObjectForKey:key];
+	}
+}
+- (void)addressQuery:(XGLANAddressQuery *)query reference:(DNSServiceRef)reference
+	flags:(DNSServiceFlags)flags interface:(uint32_t)interface error:(DNSServiceErrorType)error
+	address:(const struct sockaddr *)address
+{
+	NSString *key = service_key(query.service);
+	if (!self.browser || self.services[key] != query.service || self.queries[key] != query ||
+		query.reference != reference) return;
+	if (error) {
+		xg_log("LAN Bonjour: IPv4 query failed (%d)", error);
+		[query stop]; [self.queries removeObjectForKey:key];
+		[self.resolved removeObjectForKey:key];
+	} else {
+		if (!address || address->sa_family != AF_INET || address->sa_len != sizeof(struct sockaddr_in)) return;
+		struct sockaddr_in ipv4;
+		memcpy(&ipv4, address, sizeof(ipv4));
+		ipv4.sin_port = htons(5150);
+		/* One address may be reported on multiple interfaces. Removing one
+		 * interface must not discard the still-advertised copy on another. */
+		NSString *record = [NSString stringWithFormat:@"%u/%u", interface, ipv4.sin_addr.s_addr];
+		if (!(flags & kDNSServiceFlagsAdd)) [query.addresses removeObjectForKey:record];
+		else if (query.addresses.count < XG_LAN_MAX_PEERS || query.addresses[record])
+			query.addresses[record] = [NSData dataWithBytes:&ipv4 length:sizeof(ipv4)];
+		self.resolved[key] = query.addresses.allValues;
+	}
 	[self updateSnapshot];
 }
 - (void)netService:(NSNetService *)service didNotResolve:(NSDictionary *)error
 {
-	(void)error;
 	NSString *key = service_key(service);
 	if (self.services[key] != service) return;
+	xg_log("LAN Bonjour: resolve failed (%ld)", (long)[error[NSNetServicesErrorCode] integerValue]);
+	[self.queries[key] stop]; [self.queries removeObjectForKey:key];
 	[self.resolved removeObjectForKey:key];
 	[self updateSnapshot];
 }

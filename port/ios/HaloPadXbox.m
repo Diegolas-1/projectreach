@@ -241,7 +241,7 @@ static BOOL xbox_backup_saves(NSError **error)
 - (void)showLink
 {
 	NSString *saved = [NSUserDefaults.standardUserDefaults stringForKey:link_key] ?: @"";
-	NSString *message = [NSString stringWithFormat:@"HaloPad devices on the same Wi-Fi find each other automatically. "
+	NSString *message = [NSString stringWithFormat:@"Compatible HaloPad devices on the same local network find each other automatically. "
 		@"Allow Local Network access on both devices.\n\n"
 		@"For other OpenCE clients, add their addresses below, separated by commas. "
 		@"They can add this device's address: %@.\n\n"
@@ -250,7 +250,7 @@ static BOOL xbox_backup_saves(NSError **error)
 		preferredStyle:UIAlertControllerStyleAlert];
 	[alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
 		field.text = saved;
-		field.placeholder = @"Additional addresses (optional)";
+		field.placeholder = @"Optional IP addresses";
 		field.keyboardType = UIKeyboardTypeNumbersAndPunctuation;
 		field.autocorrectionType = UITextAutocorrectionTypeNo;
 	}];
