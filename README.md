@@ -85,7 +85,7 @@ Pick the path for the computer you have. Both are free.
 | Mac with Apple silicon | Xbox edition, or both editions | [PadMint](#on-an-apple-silicon-mac) |
 | Windows, Linux, an Intel Mac, or anything else | Xbox edition | [GitHub, in your browser](#on-windows-linux-or-any-computer) |
 
-The current release is [HaloPad 0.3.9](https://github.com/chrissotraidis/projectreach/releases/tag/v0.3.9).
+The current release is [HaloPad 0.3.10](https://github.com/chrissotraidis/projectreach/releases/tag/v0.3.10).
 
 ### On an Apple silicon Mac
 
@@ -152,8 +152,8 @@ identity or Apple ID you used before.
   over the old one.
 
 **Online play requires compatible game engines.** Each HaloPad release builds the OpenCE
-revision recorded in `config/xbox-release.json`. This source checkout is being updated to OpenCE
-build 206, network version 29; that update has not been released yet. **Updates…** on the edition
+revision recorded in `config/xbox-release.json`. HaloPad 0.3.10 uses OpenCE
+build 208, network version 29. **Updates…** on the edition
 picker shows your installed engine and network version.
 
 HaloPad's corrected policy keeps each engine on its actual network version. A signed compatibility
@@ -164,6 +164,12 @@ Xbox checkpoints may need a level restart after an engine change.
 
 ## What's new
 
+- **0.3.10: current OpenCE multiplayer and automatic map downloads.** The Xbox edition uses
+  OpenCE 208 (network version 29), downloads missing custom maps and resources from sharing
+  peers, and finds compatible HaloPad games on the same local network automatically. The
+  compatibility policy now requires the engine's actual protocol. Includes upstream's voice
+  packet and postgame-menu fixes. Rebuild through PadMint or sync your GitHub fork and run
+  the workflow again; install over your existing app to keep its data.
 - **0.3.9: building both editions works again.** 0.3.8 stopped at its last step, packaging the
   Custom Edition game files, when you chose the PC installer. Xbox-only builds were not affected.
 - **0.3.8: OpenCE updates no longer break your build.** Each HaloPad release builds the exact OpenCE
@@ -321,8 +327,8 @@ calls into. The Xbox edition is a native port of the decompiled game.
 <details>
 <summary><strong>Can I use mods and custom maps?</strong></summary>
 
-Custom `.map` files, yes: **⋯ › Add Custom Maps…**. The unreleased OpenCE 206 update for the Xbox
-edition includes upstream's automatic downloading of missing custom maps and their required resource
+Custom `.map` files, yes: **⋯ › Add Custom Maps…**. HaloPad 0.3.10's Xbox
+edition also includes automatic downloading of missing custom maps and their required resource
 maps from a sharing host and other players. Downloading is on by default; **Settings › Network Setup
 › Map Sharing** controls it, and the host must enable **Server Setup › Map Sharing › Share Maps**.
 This engine update is required to get the feature; a compatibility-file refresh cannot add it to an

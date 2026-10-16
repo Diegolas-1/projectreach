@@ -1,6 +1,27 @@
 # HaloPad status
 
-## Unreleased: OpenCE 206 / HaloPad 0.3.10
+## HaloPad 0.3.10: OpenCE 208
+
+The release pin is OpenCE 208 (`f90d95552797039383049c1f8f79a35ddbe98b2d`),
+the latest upstream release checked on 2026-10-16. It retains network version 29.
+Compared with the tested 206 candidate, 208 fixes assembly string conversion
+used by Opus tables, validates voice packet duration, and restores the main menu
+after leaving the postgame host screen. Host imports, ABI, renderer, shaders,
+camera and input source are unchanged. The reviewed adaptation accepts the exact
+208 source; it also retains support for 206 and earlier reviewed engines.
+
+Delivery remains a source/recipe release for PadMint on Apple-silicon Macs.
+Windows and other computers use **Build HaloPad (Xbox edition)** in their GitHub
+fork, then sign/install their own resulting app. There is no native Windows
+HaloPad target and no public IPA in this release. The required clean PadMint
+checks and a fresh hosted player build are tracked for the final source.
+
+The maintainer scoped release acceptance to current online compatibility,
+automatic map downloads, and working player build routes. Broader physical
+touch/controller testing is not a release gate for this update. The existing
+native controller regressions and bounded device results remain recorded below.
+
+### OpenCE 206 and Wi-Fi validation retained for this update
 
 **2026-10-16: engine update, policy correction, custom-map downloads and automatic Wi-Fi discovery verified; unreleased.**
 The engine pin is OpenCE 206 (`8102e711c353068d22d62efe6bf67ebc8a90a22e`),
@@ -150,8 +171,8 @@ The controlled two-process LAN harness remains available, but its full matrix
 is not claimed as completed. See [XBOX-MAP-SHARING-TEST.md](XBOX-MAP-SHARING-TEST.md).
 The available Wi-Fi and USB addresses on the Mac could bind but could not route
 UDP both ways; the harness now checks that before staging files or starting games.
-Third-peer seeding and full physical touch/controller gameplay remain separate
-release gates. Full touch testing needs an attended device session. No iPad was
+Third-peer seeding, the complete harness matrix and full physical touch/controller
+gameplay are not claimed by these bounded tests. No iPad was
 tested during this OpenCE 206 validation. The clean PadMint player-build checks
 above cover source `18657be`; the final release source must be checked again before tagging.
 The clean post-publication PadMint check is still required if a release is approved.

@@ -17,6 +17,7 @@ REV85 = 'c3adcfe5bf917922d732f2551341b1ad00977867'
 REV73 = 'd1c7243cb20eab4488efa1266e259b1f4d5240f6'
 REV66 = 'f2ba71d9af4c6fc65d7419cc22e8f4899b16da88'
 REV206 = '8102e711c353068d22d62efe6bf67ebc8a90a22e'
+REV208 = 'f90d95552797039383049c1f8f79a35ddbe98b2d'
 
 
 class ReviewedRendererTests(unittest.TestCase):
@@ -51,6 +52,13 @@ class ReviewedRendererTests(unittest.TestCase):
         self.assertNotIn('reviewed', reviewed)  # No unreviewed-release marker.
         with patch.dict(os.environ, {'HALOPAD_XBOX_LATEST': '1'}):
             self.assertEqual(reviewed, guest.identity('render-camera-v1', REV206))
+
+    def test_build208_reuses_unchanged_adaptation_without_latest_mode(self):
+        with patch.dict(os.environ, {'HALOPAD_XBOX_LATEST': '0'}), \
+             patch.object(guest, '_latest_source', side_effect=AssertionError('must use reviewed inputs')):
+            for name in ('render-camera-v1', 'network-policy-v1'):
+                self.assertEqual(guest.identity(name, REV208), guest.identity(name, REV206))
+                self.assertNotIn('reviewed', guest.identity(name, REV208))
 
     def test_environment_and_default_pin_select_same_identity(self):
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {}, clear=True):

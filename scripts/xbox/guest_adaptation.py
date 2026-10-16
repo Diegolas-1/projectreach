@@ -47,6 +47,10 @@ REVIEWED_RENDERERS = {
     # Build206 uses HALO_GLES, cached samplers and asynchronous visibility.
     '8102e711c353068d22d62efe6bf67ebc8a90a22e':
         '693b1aff55e875c07e4c23703e3af134ef40a0e77fe0512ce19e2ba632db07dc',
+    # Build208 fixes guest string conversion, voice validation and menu exit;
+    # renderer, shader, camera and input sources are byte-identical to 206.
+    'f90d95552797039383049c1f8f79a35ddbe98b2d':
+        '693b1aff55e875c07e4c23703e3af134ef40a0e77fe0512ce19e2ba632db07dc',
 }
 ENGINE_LOCK = pathlib.Path(__file__).resolve().parents[2] / 'config/xbox-engine.lock.json'
 ENGINE_CHECKOUT = pathlib.Path(__file__).resolve().parents[2] / 'ref/xbox-build/vol/engine'
@@ -233,6 +237,8 @@ REVIEWED_CAMERA = {
     # stay upstream's responsibility and are not altered by this adaptation.
     '8102e711c353068d22d62efe6bf67ebc8a90a22e':
         'c65fa8916f7a40e8c77f7fa4a56138b8402a9ca13e7bb068e09660174ec4d16a',
+    'f90d95552797039383049c1f8f79a35ddbe98b2d':
+        'c65fa8916f7a40e8c77f7fa4a56138b8402a9ca13e7bb068e09660174ec4d16a',
 }
 CAMERA_ANCHOR = b'#ifdef HALO_ANDROID\n\t(void)local_player_index;\n\treturn observer;\n#else\n'
 CAMERA_REPLACE = (b'#if 0 /* HaloPad: the view turns the frame the finger moves (display.direct_camera) */\n'
@@ -274,7 +280,7 @@ def identity(name=None, revision=None):
     if name in CAMERA_ADAPTATIONS:
         camera = REVIEWED_CAMERA.get(revision) or _latest_hash(revision, CAMERA_SOURCE)
         if not camera:
-            raise ValueError('Direct camera is reviewed only for builds 85, 119, 125 and 206; review render_interpolation.c first')
+            raise ValueError('Direct camera is reviewed only for builds 85, 119, 125, 206 and 208; review render_interpolation.c first')
         recipe += CAMERA_ANCHOR + CAMERA_REPLACE
         result['upstream_camera_sha256'] = camera
     if name in NETWORK_ADAPTATIONS:

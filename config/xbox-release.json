@@ -1,5 +1,5 @@
 {
-  "revision": "8102e711c353068d22d62efe6bf67ebc8a90a22e",
-  "release": "build-206",
-  "note": "OpenCE build 206, network version 29, with automatic custom-map sharing. Candidate engine for the next HaloPad source release; see docs/STATUS.md for validation. Moving upstream releases do not change this record."
+  "revision": "f90d95552797039383049c1f8f79a35ddbe98b2d",
+  "release": "build-208",
+  "note": "OpenCE build 208, network version 29, with automatic custom-map sharing and the guest assembly string-table fix. See docs/STATUS.md for validation. Moving upstream releases do not change this record."
 }

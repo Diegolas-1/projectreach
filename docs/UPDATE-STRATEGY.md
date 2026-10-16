@@ -4,7 +4,7 @@
 
 ### Network compatibility policy
 
-**Match the actual engine's network version.** The OpenCE 206 update uses network
+**Match the actual engine's network version.** The OpenCE 208 release pin uses network
 version 29. An older engine cannot gain map downloading or understand a changed map
 identity merely by advertising a newer version. Compatibility classifications from
 another fork do not establish compatibility for HaloPad's OpenCE implementation.
@@ -41,7 +41,7 @@ Installed apps refresh the policy at the picker and apply it at their next
 The existing scheduled workflow is `disabled_manually` to prevent the old
 classifier from widening those rows again. Keep it disabled until the corrected
 workflow and tool are merged into `main`, then verify them before re-enabling it.
-The OpenCE 206 candidate needs no additional policy publication: an absent engine
+The OpenCE 208 build needs no additional policy publication: an absent engine
 29 row uses the built-in exact-version rule, and the corrected app also clamps
 any cached widening. This policy correction does not publish a game release.
 
@@ -53,7 +53,9 @@ Validation for this correction: 14 policy tests pass with both the default Pytho
 and Apple's `/usr/bin/python3`, including compiled host rules and Objective-C
 Security.framework signature, cache, serial and stale-range checks. This does not
 establish physical-device multiplayer or custom-map download acceptance; current
-engine validation is tracked in [STATUS.md](STATUS.md). No game release is authorized.
+engine validation is tracked in [STATUS.md](STATUS.md). The 0.3.10 source/recipe
+release is authorized once its player build checks pass; public binary delivery
+remains a separate, disabled route.
 
 ## Historical decision, 2026-10-09 (superseded)
 
