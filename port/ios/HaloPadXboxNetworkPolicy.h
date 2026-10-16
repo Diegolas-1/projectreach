@@ -1,10 +1,11 @@
 /* HaloPad network policy v1: online compatibility updates without a new app.
  *
- * OpenCE joins only hosts of its own network version, although its raises have
- * so far been additive. HaloPad downloads a small signed policy that may widen
- * that rule for this app's fixed engine: announce a newer compatible version, and
- * join hosts in a range that always includes its own. The engine itself never
- * changes. scripts/xbox/network_policy.py makes and signs the policy; the guest
+ * OpenCE joins only hosts of its own network version. Protocol raises can change
+ * game state and map identity, so a signed policy alone cannot establish engine
+ * compatibility. This build applies only exact-version rows; cached or downloaded
+ * widenings are reduced to the engine's own version. Future widened ranges need
+ * source review and real cross-version tests before this bound is changed.
+ * scripts/xbox/network_policy.py makes and signs the policy; the guest
  * and host halves are scripts/xbox/network_bridge.py and port/xbox/xg_network_policy.h.
  *
  * A downloaded policy is cached when its signature verifies and its serial is
@@ -93,7 +94,15 @@ static NSDictionary *HPNetworkPolicyRead(NSData *file, unsigned int engine, NSDa
             [key rangeOfString:@"^[1-9][0-9]{0,4}\\z" options:NSRegularExpressionSearch].location == NSNotFound) return nil;
         NSDictionary *row = HPNetworkPolicyRow(engines[key], [key longLongValue]);
         if (!row) return nil;
-        if ([key longLongValue] == engine) mine = row;
+        if ([key longLongValue] == engine) {
+            mine = row;
+            /* No widened transition has been reviewed for this engine. Clamp
+             * both cached and fresh signed rows, retaining the serial so a bad
+             * old range cannot revive or let an older policy replace the cache. */
+            if ([row[@"minimum"] unsignedIntValue] != engine || [row[@"maximum"] unsignedIntValue] != engine)
+                mine = @{@"engine": @(engine), @"announce": @(engine), @"minimum": @(engine),
+                         @"maximum": @(engine), @"follows": @""};
+        }
     }
     return mine ? @{@"serial": serial, @"row": mine} : @{@"serial": serial};
 }

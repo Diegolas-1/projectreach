@@ -66,9 +66,8 @@ static void xbox_log_sink(const char *line)
 		HP_LOG("Xbox: later engine messages are not logged this session");
 }
 
-/* system link: iOS lets apps broadcast only with a restricted entitlement, so
- * the game searches the addresses the player lists instead (upstream's
- * network.broadcast, read when the game starts) */
+/* Bonjour finds HaloPad peers without iOS's restricted broadcast entitlement.
+ * Optional manual addresses also reach other OpenCE clients. */
 static NSString *const link_key = @"HaloPadXboxLinkAddresses";
 
 static NSString *own_addresses(void)
@@ -242,14 +241,16 @@ static BOOL xbox_backup_saves(NSError **error)
 - (void)showLink
 {
 	NSString *saved = [NSUserDefaults.standardUserDefaults stringForKey:link_key] ?: @"";
-	NSString *message = [NSString stringWithFormat:@"To play system link with other iPads, iPhones or computers running this "
-		@"Xbox version, enter their addresses (separated by commas). They enter this device's address: %@.\n\n"
-		@"Changes take effect the next time you open Halo Xbox.", own_addresses()];
+	NSString *message = [NSString stringWithFormat:@"Compatible HaloPad devices on the same local network find each other automatically. "
+		@"Allow Local Network access on both devices.\n\n"
+		@"For other OpenCE clients, add their addresses below, separated by commas. "
+		@"They can add this device's address: %@.\n\n"
+		@"Address changes take effect the next time you open Halo Xbox.", own_addresses()];
 	UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"System Link" message:message
 		preferredStyle:UIAlertControllerStyleAlert];
 	[alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
 		field.text = saved;
-		field.placeholder = @"192.168.1.20, 192.168.1.21";
+		field.placeholder = @"Optional IP addresses";
 		field.keyboardType = UIKeyboardTypeNumbersAndPunctuation;
 		field.autocorrectionType = UITextAutocorrectionTypeNo;
 	}];
@@ -335,8 +336,7 @@ static BOOL xbox_backup_saves(NSError **error)
 		[pad setControllerLabel:@"Y" hint:@"Xbox Y. Switch weapons or follow the menu prompt." forControl:@"switch"];
 		pad.controllerConnected = ^BOOL {
 			if (getenv("XG_TOUCH_SHOW")) return NO;
-			for (GCController *controller in GCController.controllers) if (controller.extendedGamepad) return YES;
-			return NO;
+			return xg_ios_controller_connected();
 		};
 		pad.delegate = self;
 		pad.engineMenuItems = @[
@@ -372,7 +372,8 @@ static BOOL xbox_backup_saves(NSError **error)
 	{
 		NSString *addresses = [NSUserDefaults.standardUserDefaults stringForKey:link_key];
 		if (addresses.length)
-			setenv("HALO_NET_BROADCAST", addresses.UTF8String, 0);
+			/* Keep automatic discovery when the player has saved manual peers. */
+			setenv("HALO_NET_BROADCAST", [@"255.255.255.255," stringByAppendingString:addresses].UTF8String, 0);
 	}
 	/* development on a device: XG_FRAME_DUMP_DOCUMENTS=1 saves frames to Documents/xbox-frame.ppm */
 	if (getenv("XG_FRAME_DUMP_DOCUMENTS"))
@@ -983,7 +984,7 @@ static UIView *chooser_pill(NSString *text, UIColor *color)
 - (void)showUpdate
 {
     unsigned int engine = xbox_network_version();
-    NSString *message = [NSString stringWithFormat:@"Installed: OpenCE %@.\n\n%@ HaloPad downloads tested online compatibility updates by itself, so most new OpenCE builds need no app update. New OpenCE builds never expire your game.\n\nWhen OpenCE changes how online play works, HaloPad needs a new release. Get it from Releases and install it over the existing app with the same signing identity; do not delete HaloPad. Your imported disc and profiles stay, though an engine change may require restarting a level.\n\nIf you build with PadMint, each HaloPad release builds its own tested engine.",
+    NSString *message = [NSString stringWithFormat:@"Installed: OpenCE %@.\n\n%@ Online games require matching network versions. Compatibility checks cannot add engine features or support a changed protocol. Your campaign never expires.\n\nTo get a newer engine and its features, install a HaloPad update from Releases over the existing app with the same signing identity; do not delete HaloPad. Your imported disc and profiles stay, though an engine change may require restarting a level.\n\nIf you build with PadMint, each HaloPad release builds its own tested engine.",
         xbox_release(xbox_build()), HPNetworkPolicySummary(engine, engine ? HPNetworkPolicyCached(engine) : nil)];
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"HaloPad Updates" message:message preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"HaloPad Releases" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {

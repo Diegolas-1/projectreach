@@ -36,15 +36,20 @@ class XboxOnlyPackageTests(unittest.TestCase):
                         patch.object(builder, 'compile_icon', return_value={}), \
                         patch.object(builder.run_core, 'IMAGE', root / 'nonexistent-PC-data'), \
                         patch.object(builder, 'create_identity', side_effect=AssertionError('PC identity read')), \
-                        patch.object(builder.subprocess, 'run'):
+                        patch.object(builder.subprocess, 'run') as run:
                     app = builder.package(exe, root / 'out', root, target, pc=False,
                                           app_version='0.3.8', app_build='2')
+                commands = [call.args[0] for call in run.call_args_list]
+                self.assertEqual(commands[-3], ['xattr', '-cr', str(app)])
+                self.assertEqual(commands[-2][:3], ['codesign', '--force', '--sign'])
+                self.assertEqual(commands[-1], ['codesign', '--verify', '--deep', '--strict', str(app)])
                 resources = app / 'Contents/Resources' if 'macabi' in target else app
                 self.assertEqual(notices.call_args.args[2], resources / 'Notices')
                 self.assertEqual(notices.call_args.args[3], 'a' * 40)
                 info = plistlib.loads((app / ('Contents/Info.plist' if 'macabi' in target else 'Info.plist')).read_bytes())
                 self.assertEqual(info['CFBundleShortVersionString'], '0.3.8')
                 self.assertEqual(info['CFBundleVersion'], '2')
+                self.assertEqual(info['NSBonjourServices'], ['_halopad._udp'])
                 self.assertEqual({str(p.relative_to(resources / 'data')) for p in (resources / 'data').rglob('*') if p.is_file()},
                                  {'xbox/halo_guest.elf', 'xbox/brokers.txt', 'xbox/build.json'})
 

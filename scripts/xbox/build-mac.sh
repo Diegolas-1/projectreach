@@ -26,6 +26,17 @@ for f in posix_files posix_net; do
 	clang -O2 -w -include "$ROOT/port/xbox/xg_darwin_compat.h" -I"$ENGINE/port/linux/src" \
 		-c "$ENGINE/port/linux/src/$f.c" -o "$OBJ/upstream_$f.o"
 done
+rm -f "$OBJ/upstream_posix_dtls.o" "$OBJ"/mbedtls_*.o
+if [ -f "$ENGINE/port/linux/src/posix_dtls.c" ]; then
+    MBEDTLS="$ENGINE/port/third_party/mbedtls"
+    clang -O2 -mmacosx-version-min=14.4 -include "$ROOT/port/xbox/xg_darwin_compat.h" \
+        -I"$ENGINE/port/linux/src" -I"$MBEDTLS/include" -I"$MBEDTLS/library" \
+        -c "$ENGINE/port/linux/src/posix_dtls.c" -o "$OBJ/upstream_posix_dtls.o"
+    for source in "$MBEDTLS"/library/*.c; do
+        clang -O2 -w -mmacosx-version-min=14.4 -I"$MBEDTLS/include" -I"$MBEDTLS/library" \
+            -c "$source" -o "$OBJ/mbedtls_$(basename "$source" .c).o"
+    done
+fi
 clang -c "$ROOT/port/xbox/xg_runtime.s" -o "$OBJ/xg_runtime.o"
 clang -c "$OUT/guest.s" -o "$OBJ/guest.o"
 clang -o "$OUT/halopad-xbox" "$OBJ"/*.o -L/opt/homebrew/lib -lSDL3 -mmacosx-version-min=14.4

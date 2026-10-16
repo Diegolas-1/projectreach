@@ -27,6 +27,7 @@ class CollectionTests(unittest.TestCase):
         self.put(self.engine, 'tools/android_build.py', 'MUSL_VERSION = "1.2.5"\n')
         self.put(self.engine, 'build/android/third_party/musl-1.2.5/COPYRIGHT', 'libc fixture license\n')
         self.put(self.engine, 'build/android/third_party/SDL3/LICENSE.txt', 'SDL fixture license\n')
+        self.put(self.engine, 'port/third_party/mbedtls/LICENSE', 'Mbed TLS fixture permission\n')
         self.put(self.engine, 'port/third_party/monocypher/monocypher.c',
                  '// Copyright Example\n// Permission fixture\n// Warranty fixture\n#include "example.h"\nint code;')
         self.put(self.engine, 'port/assets/fonts/example/OFL.txt', 'Font fixture permission\n')
@@ -56,6 +57,7 @@ class CollectionTests(unittest.TestCase):
         self.assertIn(b'Warranty fixture', text)
         self.assertIn(b'Font fixture permission', text)
         self.assertIn(b'Chromium fixture permission', text)
+        self.assertIn(b'Mbed TLS fixture permission', text)
         self.assertIn(b'// Permission text', text)
         self.assertNotIn(b'int code', text)
         self.assertNotIn(b'#include', text)

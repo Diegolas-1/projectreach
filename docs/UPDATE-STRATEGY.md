@@ -1,6 +1,68 @@
 # HaloPad updates without daily maintainer work
 
-## Current decision, 2026-10-09
+## Current decision, 2026-10-16
+
+### Network compatibility policy
+
+**Match the actual engine's network version.** The OpenCE 208 release pin uses network
+version 29. An older engine cannot gain map downloading or understand a changed map
+identity merely by advertising a newer version. Compatibility classifications from
+another fork do not establish compatibility for HaloPad's OpenCE implementation.
+
+- `scripts/xbox/network_policy.py` now uses an explicit local list of reviewed
+  transitions. That list is empty: no real cross-version tests currently justify
+  widening a HaloPad engine's range. Known breaks at network versions 28 and 29
+  remain barriers. Every plan recomputes every published engine row, including
+  older versions, so an unsafe existing widening is withdrawn rather than retained.
+- `port/ios/HaloPadXboxNetworkPolicy.h` verifies the signed policy and retains its
+  serial for rollback protection. This build reduces both cached and freshly
+  downloaded widened rows to the engine's own version before the host receives
+  them. A future widening requires source review and actual cross-version tests
+  before changing this app-side bound.
+- The guest bridge still supplies the engine's real version to the host for LAN
+  advertisements, join checks, internet listings and filters. The desktop test
+  host always uses OpenCE's exact-version rule.
+- `.github/workflows/halopad-network-policy.yml` publishes only locally reviewed
+  decisions. `mode = exact` withdraws every widening; the blanket
+  `approve_through` input has been removed. Workflow summaries report changes and
+  required engine updates without opening issues or posting comments.
+
+**Live correction published, 2026-10-16.** The corrected workflow's
+[successful run 38825272166](https://github.com/chrissotraidis/projectreach/actions/runs/38825272166)
+published signed policy serial `1792107821` in commit
+`84c79ac245372c04e20a5b336c178f4df2a1ee55`. Its engine 24 row announces and accepts
+only 24; its engine 25 row announces and accepts only 25. Signature verification
+passes for the saved envelope and fresh API and raw-CDN reads; the two live
+responses are byte-identical. The verified document is retained privately at
+`generated/opence-206-validation/corrected-network-policy-verified.json`.
+
+Installed apps refresh the policy at the picker and apply it at their next
+**Play Xbox**. Offline old apps retain their cached policy until they refresh.
+The existing scheduled workflow is `disabled_manually` to prevent the old
+classifier from widening those rows again. Keep it disabled until the corrected
+workflow and tool are merged into `main`, then verify them before re-enabling it.
+The OpenCE 208 build needs no additional policy publication: an absent engine
+29 row uses the built-in exact-version rule, and the corrected app also clamps
+any cached widening. This policy correction does not publish a game release.
+
+The signing key remains the `HALOPAD_NETWORK_POLICY_KEY` repository secret. The
+`halopad-network` branch holds only the policy; `halopad-updates` remains the app feed.
+A policy refresh changes compatibility data, not the engine or its features.
+
+Validation for this correction: 14 policy tests pass with both the default Python
+and Apple's `/usr/bin/python3`, including compiled host rules and Objective-C
+Security.framework signature, cache, serial and stale-range checks. This does not
+establish physical-device multiplayer or custom-map download acceptance; current
+engine validation is tracked in [STATUS.md](STATUS.md). The 0.3.10 source/recipe
+release is authorized once its player build checks pass; public binary delivery
+remains a separate, disabled route.
+
+## Historical decision, 2026-10-09 (superseded)
+
+The following preserves the earlier design and its dated evidence. Its external
+compatibility classifications and blanket approvals have been superseded by the
+policy above. The simulated-version hardware test established policy delivery and
+application, not compatibility between different OpenCE engines.
 
 ### Network compatibility policy
 

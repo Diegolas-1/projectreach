@@ -190,6 +190,19 @@ def checked_product_id(path):
     return '\n'.join(lines) + '\n'
 
 
+def sign_built_app(app, identity=None, entitlements=None):
+    # Finder/resource-fork metadata can reach the bundle through copied inputs or
+    # a synced build folder. Clean only our generated app, never the source files.
+    # https://developer.apple.com/library/archive/qa/qa1940/_index.html
+    subprocess.run(['xattr', '-cr', str(app)], check=True)
+    command = ['codesign', '--force', '--sign', identity or '-']
+    if entitlements:
+        command += ['--entitlements', str(entitlements)]
+    # Keep diagnostics visible so a failed personal build includes the real error.
+    subprocess.run([*command, '--timestamp=none', str(app)], check=True)
+    subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)
+
+
 def package(exe, out, work, target=TARGET, identity=None, provisioning=None, product_id=None, *, pc=True, app_version='0.3', app_build='1'):
     validate_app_version(app_version, app_build)
     xbox = bool(xbox_parts(target))
@@ -229,6 +242,7 @@ def package(exe, out, work, target=TARGET, identity=None, provisioning=None, pro
         info.update({'CFBundleSupportedPlatforms': ['MacOSX'], 'LSMinimumSystemVersion': minimum, 'UIDeviceFamily': [2],
                      'LSApplicationCategoryType': 'public.app-category.action-games'})
     if xbox:
+        info['NSBonjourServices'] = ['_halopad._udp']
         shutil.copy2(ROOT / "port/ios/assets/ChooserBackground.png", res / "ChooserBackground.png")
     info.update(compile_icon(res, out, target, minimum))
     with open((app / 'Contents' if mac else app) / 'Info.plist', 'wb') as f:
@@ -285,14 +299,13 @@ def package(exe, out, work, target=TARGET, identity=None, provisioning=None, pro
         core = create_identity(profile, target, inputs, data, stock)
         (data / 'core-identity.json').write_text(json.dumps(core, sort_keys=True, indent=2) + '\n')
     if 'simulator' in target:
-        subprocess.run(['codesign', '--force', '--sign', '-', '--timestamp=none', str(app)], check=True, capture_output=True)
+        sign_built_app(app)
         return app
     if mac:
         ent = out / 'entitlements.plist'
         with open(ent, 'wb') as f:
             plistlib.dump(MAC_ENTITLEMENTS, f)
-        subprocess.run(['codesign', '--force', '--sign', identity or '-', '--entitlements', str(ent), '--timestamp=none', str(app)],
-                       check=True, capture_output=True)
+        sign_built_app(app, identity, ent)
         return app
     entitlements = dict(ENTITLEMENTS)
     if provisioning:
@@ -302,8 +315,7 @@ def package(exe, out, work, target=TARGET, identity=None, provisioning=None, pro
     ent = out / 'entitlements.plist'
     with open(ent, 'wb') as f:
         plistlib.dump(entitlements, f)
-    subprocess.run(['codesign', '--force', '--sign', identity or '-', '--entitlements', str(ent), '--timestamp=none', str(app)],
-                   check=True, capture_output=True)
+    sign_built_app(app, identity, ent)
     if xbox:
         # the builder (scripts/builder/build.sh) packages its own IPA from this app
         print('personal Xbox build: signed app' + ('' if os.environ.get('HALOPAD_BUILDER') else ' only; no IPA created'))

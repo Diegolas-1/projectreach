@@ -35,6 +35,7 @@
 #include <sys/stat.h>
 #include "xg_host.h"
 #include "xg_ios.h"
+#include "xg_lan.h"
 #include "xg_scancode_names.h"
 #if TARGET_OS_SIMULATOR
 #include "xg_audio_capture.h"
@@ -827,16 +828,13 @@ void xg_ios_clear_touch_pad(void)
 	pthread_mutex_unlock(&pad_lock);
 }
 
-int xg_ios_controller_connected(void)
-{
-	return pads[1] != nil;
-}
-
 static void pads_refresh(void)
 {
-	NSArray<GCController *> *controllers = GCController.controllers;
 	int index;
 	pthread_mutex_lock(&pad_lock);
+	/* Serialize discovery with the slot update: an older guest poll must not
+	 * restore a controller after the UI has handled its disconnect. */
+	NSArray<GCController *> *controllers = GCController.controllers;
 	for (index = 1; index <= PADS; index++)
 		if (pads[index] && ![controllers containsObject:pads[index]])
 		{
@@ -860,18 +858,37 @@ static void pads_refresh(void)
 	pthread_mutex_unlock(&pad_lock);
 }
 
-static int pad_connected(uint32_t id) { return id == 1 || (id <= PADS && pads[id]); }
+static GCController *hardware_pad(uint32_t id)
+{
+	pthread_mutex_lock(&pad_lock);
+	GCController *controller = id <= PADS ? pads[id] : nil;
+	pthread_mutex_unlock(&pad_lock);
+	return controller;
+}
+
+int xg_ios_controller_connected(void)
+{
+	/* Controller notifications can arrive before the next guest input poll.
+	 * Keep player two in its slot when player one leaves, and show touch for
+	 * the now-vacant primary slot even while another controller remains. */
+	pads_refresh();
+	return hardware_pad(1) != nil;
+}
+
+static int pad_connected(uint32_t id) { return id == 1 || hardware_pad(id) != nil; }
 
 int xh_host_sdl_get_gamepads(uint32_t ids, int capacity)
 {
 	int count = 0, index;
 	pads_refresh();
+	pthread_mutex_lock(&pad_lock);
 	for (index = 1; index <= PADS && count < capacity; index++)
-		if (pad_connected((uint32_t)index))
+		if (index == 1 || pads[index])
 		{
 			G(uint32_t *, ids)[count++] = (uint32_t)index;
 			pad_announced[index] = 1;
 		}
+	pthread_mutex_unlock(&pad_lock);
 	return count;
 }
 
@@ -889,7 +906,7 @@ static float stronger(float a, float b) { return xg_touch_stronger(a, b); }
 int xh_host_sdl_gamepad_axis(uint32_t pad, int axis)
 {
 	static float traced[6];
-	GCExtendedGamepad *g = pad <= PADS ? pads[pad].extendedGamepad : nil;
+	GCExtendedGamepad *g = hardware_pad(pad).extendedGamepad;
 	float values[6] = { 0 };
 	if (g)
 	{
@@ -941,7 +958,7 @@ static int hardware_button(GCExtendedGamepad *g, int button)
 
 int xh_host_sdl_gamepad_button(uint32_t pad, int button)
 {
-	int pressed = hardware_button(pad <= PADS ? pads[pad].extendedGamepad : nil, button);
+	int pressed = hardware_button(hardware_pad(pad).extendedGamepad, button);
 	if (pad == 1 && button >= 0 && button < 32)
 	{
 		pthread_mutex_lock(&pad_lock);
@@ -1009,6 +1026,7 @@ int xh_host_sdl_poll_event(uint32_t event)
 	}
 	pthread_mutex_unlock(&pad_lock);
 	pads_refresh();
+	pthread_mutex_lock(&pad_lock);
 	for (index = 1; index <= PADS; index++)
 		if (pads[index] && !pad_announced[index])
 		{
@@ -1017,8 +1035,10 @@ int xh_host_sdl_poll_event(uint32_t event)
 			out->gdevice.type = SDL_EVENT_GAMEPAD_ADDED;
 			out->gdevice.timestamp = (Uint64)xh_host_sdl_ticks() * 1000000ull;
 			out->gdevice.which = (SDL_JoystickID)index;
+			pthread_mutex_unlock(&pad_lock);
 			return 1;
 		}
+	pthread_mutex_unlock(&pad_lock);
 	return 0;
 }
 
@@ -1254,5 +1274,6 @@ int xg_ios_start(const char *image_path, const char *data_root, const char *save
 		return -1;
 	}
 	xg_log("started: data %s, saves %s", data_root, save_root);
+	xg_lan_start();
 	return 0;
 }

@@ -16,6 +16,8 @@ REV74 = '80d30410c8db28f4008b92f4e012a1b046ece14e'
 REV85 = 'c3adcfe5bf917922d732f2551341b1ad00977867'
 REV73 = 'd1c7243cb20eab4488efa1266e259b1f4d5240f6'
 REV66 = 'f2ba71d9af4c6fc65d7419cc22e8f4899b16da88'
+REV206 = '8102e711c353068d22d62efe6bf67ebc8a90a22e'
+REV208 = 'f90d95552797039383049c1f8f79a35ddbe98b2d'
 
 
 class ReviewedRendererTests(unittest.TestCase):
@@ -39,6 +41,24 @@ class ReviewedRendererTests(unittest.TestCase):
         self.assertEqual(rev85['upstream_renderer_sha256'],
                          'ff150104be97062027b6a65939218bff1b10e202f1b65e4a5a7504c12b5dd99d')
         self.assertEqual(rev85['recipe_sha256'], rev74['recipe_sha256'])
+
+    def test_build206_pins_new_renderer_camera_and_recipe_without_latest_mode(self):
+        with patch.dict(os.environ, {'HALOPAD_XBOX_LATEST': '0'}):
+            reviewed = guest.identity('render-camera-v1', REV206)
+        self.assertEqual(reviewed['upstream_renderer_sha256'], guest.border_sampling.GLES_RENDERER_SHA256)
+        self.assertEqual(reviewed['upstream_camera_sha256'],
+                         'c65fa8916f7a40e8c77f7fa4a56138b8402a9ca13e7bb068e09660174ec4d16a')
+        self.assertNotEqual(reviewed['recipe_sha256'], guest.identity('render-camera-v1', REV85)['recipe_sha256'])
+        self.assertNotIn('reviewed', reviewed)  # No unreviewed-release marker.
+        with patch.dict(os.environ, {'HALOPAD_XBOX_LATEST': '1'}):
+            self.assertEqual(reviewed, guest.identity('render-camera-v1', REV206))
+
+    def test_build208_reuses_unchanged_adaptation_without_latest_mode(self):
+        with patch.dict(os.environ, {'HALOPAD_XBOX_LATEST': '0'}), \
+             patch.object(guest, '_latest_source', side_effect=AssertionError('must use reviewed inputs')):
+            for name in ('render-camera-v1', 'network-policy-v1'):
+                self.assertEqual(guest.identity(name, REV208), guest.identity(name, REV206))
+                self.assertNotIn('reviewed', guest.identity(name, REV208))
 
     def test_environment_and_default_pin_select_same_identity(self):
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {}, clear=True):

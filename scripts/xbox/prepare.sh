@@ -81,5 +81,6 @@ import pathlib, re, sys
 source = pathlib.Path(sys.argv[1]).read_text()
 signature = re.search(r'int posix_upnp_forward_udp\((.*?)\);', source, re.S).group(1)
 pathlib.Path(sys.argv[2]).write_text(
-    '#define XG_UPNP_PREFERRED_PORT ' + str(int('preferred_port' in signature)) + '\n')
+    '#define XG_UPNP_PREFERRED_PORT ' + str(int('preferred_port' in signature)) + '\n'
+    '#define XG_ENGINE_DTLS ' + str(int('int posix_dtls_open(void);' in source)) + '\n')
 PY

@@ -122,20 +122,32 @@ if [ "$RENDERER" = angle-metal ]; then
 fi
 SYSROOT=$(xcrun --sdk $XSDK --show-sdk-path)
 CC="xcrun --sdk $XSDK clang -target $TARGET -isysroot $SYSROOT $CATALYST"
-CFLAGS="-O2 -g -Wall -Wno-unused-function -DGLES_SILENCE_DEPRECATION -fobjc-arc -I$ROOT/port/xbox -I$OUT -I/opt/homebrew/include $ANGLE_FLAGS"
+CFLAGS="-O2 -g -Wall -Wno-unused-function -DGLES_SILENCE_DEPRECATION -DXG_BONJOUR=1 -fobjc-arc -I$ROOT/port/xbox -I$OUT -I/opt/homebrew/include $ANGLE_FLAGS"
 mkdir -p "$OBJ" "$APP"
 for f in xg_memory xg_thread xg_syscall xg_gl xg_posix xg_xiso; do
 	$CC $CFLAGS -I"$INC" -c "$ROOT/port/xbox/$f.c" -o "$OBJ/$f.o"
 done
 $CC $CFLAGS -I"$INC" -c "$OUT/xg_gl_gen.c" -o "$OBJ/xg_gl_gen.o"
 $CC $CFLAGS -I"$INC" -c "$OUT/xg_gl_helpers.c" -o "$OBJ/xg_gl_helpers.o"
-for f in xg_ios xg_touch xg_draw_capture xg_draw_replay xg_depth_capture xg_app_ios; do
+for f in xg_ios xg_lan xg_touch xg_draw_capture xg_draw_replay xg_depth_capture xg_app_ios; do
 	$CC $CFLAGS -c "$ROOT/port/xbox/$f.m" -o "$OBJ/$f.o"
 done
 for f in posix_files posix_net; do
 	$CC -O2 -w -include "$ROOT/port/xbox/xg_darwin_compat.h" -I"$ROOT/port/xbox/compat" -I"$ENGINE/port/linux/src" \
 		-c "$ENGINE/port/linux/src/$f.c" -o "$OBJ/upstream_$f.o"
 done
+# Remove only this optional dependency's generated objects when switching engines.
+rm -f "$OBJ/upstream_posix_dtls.o" "$OBJ"/mbedtls_*.o
+if [ -f "$ENGINE/port/linux/src/posix_dtls.c" ]; then
+    MBEDTLS="$ENGINE/port/third_party/mbedtls"
+    $CC -O2 -include "$ROOT/port/xbox/xg_darwin_compat.h" -I"$ENGINE/port/linux/src" \
+        -I"$MBEDTLS/include" -I"$MBEDTLS/library" \
+        -c "$ENGINE/port/linux/src/posix_dtls.c" -o "$OBJ/upstream_posix_dtls.o"
+    for source in "$MBEDTLS"/library/*.c; do
+        $CC -O2 -w -I"$MBEDTLS/include" -I"$MBEDTLS/library" \
+            -c "$source" -o "$OBJ/mbedtls_$(basename "$source" .c).o"
+    done
+fi
 $CC -c "$ROOT/port/xbox/xg_runtime.s" -o "$OBJ/xg_runtime.o"
 [ "$OBJ/guest.o" -nt "$OUT/guest.s" ] || $CC -c "$OUT/guest.s" -o "$OBJ/guest.o"
 # the engine as a library for HaloPad's own app (scripts/build-ios-app.py links
@@ -206,6 +218,8 @@ cat > "$APP/Info.plist" <<EOF
 <key>UIApplicationSceneManifest</key><dict><key>UIApplicationSupportsMultipleScenes</key><false/></dict>
 <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
 <key>CFBundleDisplayName</key><string>HaloPad Xbox</string>
+<key>NSLocalNetworkUsageDescription</key><string>HaloPad finds and joins Halo games on your local network.</string>
+<key>NSBonjourServices</key><array><string>_halopad._udp</string></array>
 </dict></plist>
 EOF
 cat > "$OUT/xbox.entitlements" <<EOF

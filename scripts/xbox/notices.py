@@ -11,6 +11,7 @@ import subprocess
 COMPONENTS = {
     'tomlc17': 'LICENSE', 'expat': 'COPYING', 'kcp': 'LICENSE',
     'zlib': 'LICENSE', 'stb': 'LICENSE', 'smaa': 'LICENSE', 'musl-math': 'COPYRIGHT',
+    'mbedtls': 'LICENSE',
 }
 CHROMIUM_REFERENCE = 'https://chromium.googlesource.com/chromium/src/+/2f2268b0cfbce9d99583621ac14b984528b15cd0/LICENSE'
 

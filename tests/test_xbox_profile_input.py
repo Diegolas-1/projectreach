@@ -62,9 +62,9 @@ class XboxProfileInputTests(unittest.TestCase):
                         raise RuntimeError('interrupted build')
                 for path, content in fixtures.items():
                     self.assertEqual((root/path).read_bytes(), b'concurrent edit' if path==concurrent else content)
-        self.assertEqual(guest.identity('render-border-v1')['recipe_sha256'],
+        self.assertEqual(guest.identity('render-border-v1', '13c14df95c63156429e96a9694bb9cecd0379228')['recipe_sha256'],
                          'eaa7d81b13ea041db40add5fcca82a628a22b6ce5073719c79979a8091f9fed6')
-        self.assertEqual(guest.identity('shared-input-v1')['recipe_sha256'],
+        self.assertEqual(guest.identity('shared-input-v1', '13c14df95c63156429e96a9694bb9cecd0379228')['recipe_sha256'],
                          '71781a2a250a1e868243a461edc51127b548307149673ab05179d986e09f95fd')
 
     def test_native_mapping_and_transitions(self):

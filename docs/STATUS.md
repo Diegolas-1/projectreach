@@ -1,6 +1,226 @@
 # HaloPad status
 
-## Current release candidate: 0.3.8 Xbox-only beta
+## HaloPad 0.3.10: OpenCE 208
+
+The release pin is OpenCE 208 (`f90d95552797039383049c1f8f79a35ddbe98b2d`),
+the latest upstream release checked on 2026-10-16. It retains network version 29.
+Compared with the tested 206 candidate, 208 fixes assembly string conversion
+used by Opus tables, validates voice packet duration, and restores the main menu
+after leaving the postgame host screen. Host imports, ABI, renderer, shaders,
+camera and input source are unchanged. The reviewed adaptation accepts the exact
+208 source; it also retains support for 206 and earlier reviewed engines.
+
+Delivery remains a source/recipe release for PadMint on Apple-silicon Macs.
+Windows and other computers use **Build HaloPad (Xbox edition)** in their GitHub
+fork, then sign/install their own resulting app. There is no native Windows
+HaloPad target and no public IPA in this release. The clean PadMint iOS and Mac
+checks passed from source `8324cfe`, using
+current PadMint main `b9f4c3d`, Apple Python 3.9.6, fresh source clones and empty
+PadMint folders. Both resulting apps pass strict signatures, notices and package
+audits; all 49 embedded runtime-source hashes match that clean source. The test
+suite passes **379 Xbox tests and 23 builder tests (402 total)**.
+
+The [hosted player workflow](https://github.com/chrissotraidis/projectreach/actions/runs/38874679471)
+also passed for both platforms. Its downloaded 0.3.10/build-3 artifacts pass
+checksums, signatures, notices, engine identity and the same 49-source-hash
+audit. This verifies the GitHub build route available to Windows users; it does
+not add a Windows-native app target.
+
+The maintainer scoped release acceptance to current online compatibility,
+automatic map downloads, and working player build routes. Broader physical
+touch/controller testing is not a release gate for this update. The existing
+native controller regressions and bounded device results remain recorded below.
+
+The exact clean-player 208 Mac app connected to a current network-29 public
+server and automatically downloaded Danger Canyon (15,165,396 bytes) in 23
+seconds. A private invite then connected it to the physical iPhone's 208 app;
+the connection selected their local Wi-Fi route. The Mac automatically downloaded
+CE Blood Gulch (13,936,092 bytes) in 13 seconds, matching the independent original
+SHA256. Both apps recorded 51 advancing two-player gameplay samples with zero
+GL errors. Existing CE resources and the save sentinel stayed unchanged, and no
+partial download files remained. These packages are the player-check outputs,
+not separately built test binaries. The in-place iPhone upgrade used the same
+signing identity and profile; a full post-test readback matched all 200 normal
+game, save and preference files against the pre-upgrade backup.
+
+### OpenCE 206 and Wi-Fi validation retained for this update
+
+**Earlier candidate validation, before the final OpenCE 208 pin above:**
+The tested engine was OpenCE 206 (`8102e711c353068d22d62efe6bf67ebc8a90a22e`),
+network version 29. This brings upstream's automatic custom-map and resource-map
+downloads to the Xbox edition. The PC Custom Edition engine is unchanged. No game
+release or tag had been published at this stage.
+
+The native bridge now implements the DTLS/HMAC imports and builds upstream's Mbed
+TLS dependencies on Mac and iOS. Reviewed renderer and input adaptations cover
+206 while retaining the older supported identities. A physical iPhone run caught
+an additional draw-call alias regression: EXT/OES base-vertex index-buffer offsets
+were being translated as guest pointers. The bridge now handles these like the
+core entry point; an executable regression fails before the fix and passes after.
+Build 26 is rejected for rendering; build 27 includes the correction. **Build 28**
+also restores touch controls when player one's controller disconnects while
+player two remains connected, without moving the second player's controller slot.
+Build 29 also serializes controller discovery with slot updates, so an older guest
+poll cannot restore a disconnected controller after the UI refresh. Deterministic
+slot/visibility regressions fail before these fixes and pass after them.
+
+Both build-29 packages pass manifest, contents, notices and signing audits. The
+candidate run passes **374 Xbox tests and 23 builder tests**. Native DTLS tests
+also exercise real Mbed TLS handshakes, fingerprints, HMAC, bidirectional data,
+invalid handles, close/double-close, packet loss and clock wrap. Earlier packaged Mac
+testing loaded the private CE Blood Gulch fixture and rendered gameplay with zero
+GL errors. Initial incorrect Mac fixture paths were outside its UUID-named sandbox;
+the successful run uses an isolated directory inside its actual container. The
+exact final build-29 Mac package also passed a 48-second campaign smoke with
+zero GL errors and unchanged source maps, save sentinel and existing preferences.
+
+Clean player builds found and fixed a separate SDK-selection defect: Apple's
+Python reintroduces the Mac SDK in `SDKROOT`, even after PadMint clears it. Device
+and Simulator builds now select their matching SDK; compatible explicit overrides
+remain supported. Eleven runner tests pass, including a real Apple-Python child
+process compiling UIKit for iPhone. Both iOS and Mac `player-check.sh` runs then
+passed from clean source `18657be`, using PadMint main `2d81394`, Apple Python
+3.9.6, and a fresh source clone and empty PadMint home per platform. Extracted
+packages pass strict/deep signature verification; all 45 embedded runtime-source
+hashes match their clean checkout. No post-publication check was applicable to
+that earlier candidate.
+
+Physical testing is limited to the **iPhone 14**, as requested. HaloPad was absent
+before the first installation. Before upgrading the test installation from build
+26 to 27, two independent reads matched all 71 files (866,304,971 bytes). After
+installation, all game data, saves and preferences remained identical; only iOS
+launch snapshots changed. Build 27 renders the campaign tutorial room and NPC;
+630 seconds of campaign reporting have zero GL errors, with steady windows near
+60 fps after loading. This is not a completed campaign or a full touch-control test.
+
+An in-place upgrade from a retained personal 0.3.9 build to 0.3.10/build 28
+also passed on the iPhone. Its OpenCE 170 runtime sources match the public
+0.3.9 tag; the release itself distributes a recipe, not a public IPA. Before
+testing, two independent full backups matched all 216 files (3,887,480,768
+bytes). Installation readbacks matched all 56 checked map, save, configuration
+and preference files (1,236,536,208 bytes), and both versions reached the menu.
+Build 29 subsequently installed with those same 56 checked files unchanged.
+
+Real internet transfers now pass on the packaged Mac app and physical iPhone:
+
+- Starting without custom maps or CE resources, the iPhone downloaded Death
+  Island and all three resources (183,811,669 bytes) in 198 seconds, using up to
+  three peers. All four SHA256 hashes match independent preexisting fixtures;
+  no partial files remain. It entered the public match with four players, and
+  advancing simulation ticks and player events confirm continued multiplayer.
+  QuickTime captured the download progress and transition into the rendered map.
+  The latest 330 seconds of render reporting have zero GL errors. Stock maps and
+  the unrelated save sentinel remain unchanged. Cached iPhone rejoining also
+  produced over 120 advancing gameplay ticks without requesting another download.
+- The Mac downloaded the same four files, verified identical hashes and rendered
+  the map with working movement. After an interrupted earlier download, it reused
+  222 verified bitmap pieces offered by another server. Independent piece hashes
+  confirm those existing bytes were preserved through completion.
+- Mac cached rejoining produced 77 gameplay ticks with no new download and
+  unchanged hashes. With a different existing `deathisland.map`, it preserved
+  that file and downloaded `deathisland_451254bb.map`, then entered gameplay;
+  resources, stock UI, save sentinel and the original fixture stayed unchanged.
+- The physical iPhone also hosted a private internet game and served Blood Gulch
+  plus all three resources to an empty native Mac client (179,594,477 bytes).
+  After a client interruption, 46,966,236 verified bytes were reused and the
+  remaining 132,628,241 bytes downloaded. All four completed hashes match the
+  independent originals, no partial files remain, and both players entered the
+  same advancing simulation. The client stock map and save sentinel were preserved.
+- Build 28 survived 48.5 seconds in the background during a private Blood Gulch
+  download. iOS suspended the app and the match connection timed out. After an
+  explicit app restart and rejoin, it reused 16 verified pieces (4,194,304 bytes)
+  and downloaded the remaining 9,741,788 bytes. The completed map and three
+  existing resources matched their original hashes, with no partial files left.
+  Two-player gameplay resumed with zero GL errors; stock UI and the save sentinel
+  stayed unchanged. This proves recovery after rejoining, not an uninterrupted
+  background download or automatic match reconnection.
+- Final build 29 rejoined the cached CE Blood Gulch map and rendered two-player
+  gameplay with zero GL errors and no new map download. An initial retry was
+  correctly rejected after the test host bot switched to stock Xbox Blood Gulch;
+  the successful repeat used a fresh host with the CE map verified and no bot.
+
+Direct System Link also passed between the Mac host and physical iPhone over
+their USB network connection, with internet mode disabled. The iPhone downloaded
+Blood Gulch (13,936,092 bytes) in 15 seconds, matching the independent source hash,
+then joined two-player gameplay with zero GL errors. The host recorded 83 seconds
+of advancing two-player simulation; its maps and both save sentinels stayed
+unchanged. This proves direct local transport, not Wi-Fi discovery. The devices
+were on different Wi-Fi subnets; neither broadcast discovery nor explicit Wi-Fi
+unicast connected in that configuration.
+
+**Automatic Wi-Fi discovery now passes on build 31 (`9e8ce02`).** The user moved
+the iPhone to the Mac's network; no Mac network settings changed. Both hosts now
+advertise and browse a declared Bonjour service, then send OpenCE's discovery
+packets to the discovered local IPv4 peers. This works without adding the
+restricted multicast entitlement. Manual addresses remain available for other
+OpenCE clients and no longer disable automatic HaloPad discovery.
+
+The first physical run exposed a second problem: Foundation sometimes resolved
+the attached iPhone only through its USB IPv6 interface, dropping its Wi-Fi IPv4
+address at refresh. Build 31 queries IPv4 across interfaces and tracks removals.
+A native regression reproduces that result and checks cancellation, stale
+callbacks, address changes, invalid endpoints and background/foreground lifecycle.
+Both build-31 packages pass contents, notices, manifest and strict signature
+audits; **378 Xbox tests plus 23 builder tests pass**. Independent review and
+iOS/Catalyst compile/link checks also pass.
+
+- The iPhone automatically discovered a Mac-hosted game and downloaded the
+  missing Blood Gulch map (13,936,092 bytes); its SHA256 matched the independent
+  original. The final build-31 repeat joined the cached map and recorded 92
+  advancing two-player samples with stable discovery and zero GL errors.
+- Reversing the roles on build 31, the Mac discovered the iPhone after the host
+  had already been running for 52 seconds. It downloaded the missing map in
+  13 seconds with the same matching hash, then both devices reported advancing
+  two-player gameplay. Stock maps, resources and save sentinels stayed unchanged.
+- After the iPhone spent 52 seconds in the background, both peer lists correctly
+  emptied. Resuming the same iPhone process restarted discovery and both peers
+  reappeared automatically. This proves discovery recovery; match reconnection
+  after suspension remains a separate action.
+- All these LAN runs disabled internet mode and used no manual addresses or
+  clipboard invitations. Socket and route evidence confirms Wi-Fi transport.
+  The System Link dialog's instructions and optional address field were checked
+  in the final Mac package; the shortened placeholder now fits.
+
+Before the Wi-Fi builds were installed, two independent full device reads
+matched all 217 files (3,749,830,220 bytes). After builds 30/31 and their isolated
+tests, all **200 normal game-data/save/preference files (3,737,010,438 bytes)**
+were identical to that backup. The seven protected fixture files also matched;
+there were no partial map downloads. The differences were logs, system launch
+state/snapshots and caches. Signing identity, entitlements and provisioning
+profile were retained for the in-place upgrades.
+
+The controlled two-process LAN harness remains available, but its full matrix
+is not claimed as completed. See [XBOX-MAP-SHARING-TEST.md](XBOX-MAP-SHARING-TEST.md).
+The available Wi-Fi and USB addresses on the Mac could bind but could not route
+UDP both ways; the harness now checks that before staging files or starting games.
+Third-peer seeding, the complete harness matrix and full physical touch/controller
+gameplay are not claimed by these bounded tests. No iPad was
+tested during this OpenCE 206 validation. The clean PadMint player-build checks
+above cover source `18657be`; the final release source must be checked again before tagging.
+The clean post-publication PadMint check is still required if a release is approved.
+
+The live signed compatibility policy was corrected separately: serial
+`1792107821` restricts engines 24 and 25 to their actual versions. The new reader
+also clamps stale widened rows. Engine 29 safely uses exact matching without a
+published row. The old scheduled policy workflow remains disabled until the
+corrected code reaches the default branch; see [UPDATE-STRATEGY.md](UPDATE-STRATEGY.md).
+
+After testing, the iPhone test library was moved intact to the normal `Halo Xbox`
+folder, and the app was reopened without network-test launch variables. It contains
+the menu map, the first campaign map, the stock host default map and the downloaded
+CE maps/resources; it is not a complete disc import. Temporary device diagnostic
+apps and the isolated download-test fixture were removed after preserving their
+evidence. All test clients were stopped.
+
+Private evidence: `generated/xbox-candidates/runs/31-build-206/`,
+`generated/opence-206-validation/wifi-discovery-20261016/`,
+`generated/xbox-candidates/runs/29-build-206/`,
+`generated/opence-206-validation/` and `ref/xbox-build/map-sharing-206-iphone/`.
+These contain local game inputs or device details and must not be published.
+
+## Historical validation: 0.3.8–0.3.9
+
+The dated policy decisions below are superseded by the exact-version correction above.
 
 **0.3.9, 2026-10-10: both editions build again.** Since `e4a3a53`, the builder staged the
 Custom Edition game package as `game.zip`, and `halopad_package.py` refuses any name
@@ -406,6 +626,11 @@ Developer; a paid account does not bypass the pending Program License Agreement.
 Chris was asked to accept that agreement. Consumer install/upgrade and its actual
 entitlements remain unverified; the successful development-profile install above
 is separate evidence.
+
+After testing, the iPhone test library was moved intact to the normal `Halo Xbox`
+folder, and the app was reopened without test launch variables. It contains the
+menu map, the first campaign map and the downloaded CE map/resources; it is not
+a complete disc import. All test clients were stopped.
 
 Private evidence: `generated/device-update-20261008/`, `generated/update-loop-20261008/`, `generated/xbox-candidates/`, and `generated/release-acceptance-20261007/`, including backup/readback
 audits, the build-4 crash report, build-5 signature and campaign logs, and Mac

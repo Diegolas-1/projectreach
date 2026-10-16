@@ -85,7 +85,7 @@ Pick the path for the computer you have. Both are free.
 | Mac with Apple silicon | Xbox edition, or both editions | [PadMint](#on-an-apple-silicon-mac) |
 | Windows, Linux, an Intel Mac, or anything else | Xbox edition | [GitHub, in your browser](#on-windows-linux-or-any-computer) |
 
-The current release is [HaloPad 0.3.9](https://github.com/chrissotraidis/projectreach/releases/tag/v0.3.9).
+The current release is [HaloPad 0.3.10](https://github.com/chrissotraidis/projectreach/releases/tag/v0.3.10).
 
 ### On an Apple silicon Mac
 
@@ -117,8 +117,8 @@ iPhone, iPad and Mac. Custom Edition still needs an Apple silicon Mac.
 1. Sign in to GitHub and **Fork** this repository. Your copy is public, like this one.
 2. In your fork, open **Actions**, enable workflows if asked, choose **Build HaloPad (Xbox edition)**
    and click **Run workflow**. It takes about 15 minutes.
-3. Open the finished run and download its artifact. It holds `HaloPad-v0.3.9-ios-unsigned.ipa`,
-   `HaloPad-v0.3.9-mac.zip` and `SHA256SUMS`, and GitHub keeps it for 7 days.
+3. Open the finished run and download its artifact. It holds the versioned HaloPad iOS IPA,
+   Mac ZIP and `SHA256SUMS`, and GitHub keeps it for 7 days.
 4. Install the IPA with [Sideloadly](https://sideloadly.io) (Windows or Mac) or another tool that
    signs with your own Apple ID, or follow the [install guide](docs/INSTALL-IPHONE.md). On a Mac,
    unzip the Mac app and open it.
@@ -151,25 +151,30 @@ identity or Apple ID you used before.
 - **GitHub:** press **Sync fork** on your fork, run the workflow again, and install the new IPA
   over the old one.
 
-**You rarely need to update just to keep playing online.** OpenCE publishes new engine builds
-almost daily, but your installed HaloPad keeps working. Each release builds the exact OpenCE engine
-it was tested with (currently OpenCE build 170, network version 25, recorded in
-`config/xbox-release.json`). OpenCE only lets players on the same network version play together.
-When OpenCE raises that version with a change older builds can still handle, HaloPad downloads a
-small signed compatibility file and joins those games the next time you press **Play Xbox**, with
-no rebuild. A change is followed only after
-[ChupathingyCE's](https://github.com/ChupathingyCE/chupathingyce) cross-play tests mark it as
-compatible. **Updates…** on the edition picker shows which versions your app plays with. When
-OpenCE changes online play in a way older builds cannot handle, a new HaloPad release follows.
-The campaign never expires. Xbox checkpoints may need a level restart after an engine change.
+**Online play requires compatible game engines.** Each HaloPad release builds the OpenCE
+revision recorded in `config/xbox-release.json`. HaloPad 0.3.10 uses OpenCE
+build 208, network version 29. **Updates…** on the edition
+picker shows your installed engine and network version.
+
+HaloPad's corrected policy keeps each engine on its actual network version. A signed compatibility
+file cannot add features such as custom-map downloading or make an older engine understand a changed
+protocol. If another player uses a different network version, both players need builds with matching
+versions. Install a HaloPad update to get its newer engine and features. The campaign never expires;
+Xbox checkpoints may need a level restart after an engine change.
 
 ## What's new
 
+- **0.3.10: current OpenCE multiplayer and automatic map downloads.** The Xbox edition uses
+  OpenCE 208 (network version 29), downloads missing custom maps and resources from sharing
+  peers, and finds compatible HaloPad games on the same local network automatically. The
+  compatibility policy now requires the engine's actual protocol. Includes upstream's voice
+  packet and postgame-menu fixes. Rebuild through PadMint or sync your GitHub fork and run
+  the workflow again; install over your existing app to keep its data.
 - **0.3.9: building both editions works again.** 0.3.8 stopped at its last step, packaging the
   Custom Edition game files, when you chose the PC installer. Xbox-only builds were not affected.
 - **0.3.8: OpenCE updates no longer break your build.** Each HaloPad release builds the exact OpenCE
-  engine it was tested with, and your installed app keeps up with compatible online changes by
-  itself (see [Updating HaloPad](#updating-halopad)). The Xbox edition also builds
+  engine it was tested with. Online compatibility follows the corrected rules in
+  [Updating HaloPad](#updating-halopad). The Xbox edition also builds
   [without a Mac](#on-windows-linux-or-any-computer).
 - **0.3.6: corrected Wine setup.** Homebrew disabled its Wine package; follow the
   [Wine installation guide](docs/INSTALL-WINE.md).
@@ -286,12 +291,11 @@ use your microphone yet.
 <details>
 <summary><strong>Why can't I join someone's Xbox game?</strong></summary>
 
-OpenCE players can only join hosts on a network version their game accepts. Close HaloPad and open it
-again so it can check for a newer compatibility file, then press **Play Xbox**. **Updates…** on the
-edition picker shows the versions your app plays with. If the host uses a version that OpenCE changed
-in an incompatible way, you need a newer HaloPad release. Players who have not updated OpenCE may also
-be on an older version. The server browser finds games through OpenCE's public brokers; there is no
-HaloPad game server.
+Check **Updates…** on the edition picker and compare your OpenCE network version with the host's.
+The corrected HaloPad policy requires matching network versions. Reopening the app checks for a
+newer signed policy, but cannot update the engine or add map downloading. If the versions differ,
+install a HaloPad build with the matching engine; an OpenCE player may also need to update. The
+server browser finds games through OpenCE's public brokers; there is no HaloPad game server.
 
 </details>
 
@@ -323,8 +327,14 @@ calls into. The Xbox edition is a native port of the decompiled game.
 <details>
 <summary><strong>Can I use mods and custom maps?</strong></summary>
 
-Custom `.map` files, yes: **⋯ › Add Custom Maps…**. Windows DLL mods such as Chimera, OpenSauce and HAC2
-cannot load into a translated game.
+Custom `.map` files, yes: **⋯ › Add Custom Maps…**. HaloPad 0.3.10's Xbox
+edition also includes automatic downloading of missing custom maps and their required resource
+maps from a sharing host and other players. Downloading is on by default; **Settings › Network Setup
+› Map Sharing** controls it, and the host must enable **Server Setup › Map Sharing › Share Maps**.
+This engine update is required to get the feature; a compatibility-file refresh cannot add it to an
+older HaloPad. The separate PC Custom Edition engine is unchanged.
+
+Windows DLL mods such as Chimera, OpenSauce and HAC2 cannot load into a translated game.
 
 </details>
 
