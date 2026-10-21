@@ -1,8 +1,17 @@
 # HaloPad status
 
-## HaloPad 0.3.11: OpenCE 244 validation
+## HaloPad 0.3.11: OpenCE 244
 
-Validated 2026-10-21 for source/recipe publication. The Xbox edition pins OpenCE
+**Published 2026-10-21:** [HaloPad 0.3.11](https://github.com/chrissotraidis/projectreach/releases/tag/v0.3.11)
+is the latest source/recipe release at `57fca3a`. Anonymous metadata and downloaded
+asset readbacks verify exactly its PadMint recipe and `SHA256SUMS`, byte-identical
+to the audited files. Required post-publication PadMint checks passed for iOS and
+Mac using Apple Python 3.9.6, empty PadMint folders, no supplied checkout and the
+published 0.3.11 source. Builds took 246 and 248 seconds. Both exported packages
+pass strict signatures, engine/package checksums, all 35 component notices and
+all 49 runtime-source hashes against the public tag.
+
+Validated 2026-10-21. The Xbox edition pins OpenCE
 build 244 (`6ec42856d73e258e5a8c7e9cd19161f46d89d0e4`), network version 32.
 Renderer, shader, input and network adaptations are reviewed against the exact
 upstream source. Native dialogs implement the new mod-confirmation import; Files
@@ -46,8 +55,10 @@ both editions' maps, saves, configuration and preferences. The Mac also joined
 a current network-32 public server and recorded 45 advancing gameplay samples
 with zero GL errors. Its 28 input maps, resources and save sentinel are unchanged.
 
-Required post-publication PadMint checks will follow publication before release
-announcement. Optional mods, text chat, bots and HDR are not claimed tested.
+The [network-policy rollout](https://github.com/chrissotraidis/projectreach/actions/runs/39533710959)
+also passed: signed public/API readbacks match, network 32 is current and exact,
+and older 24/25/29 rows remain exact. Optional mods, text chat, bots and HDR are
+not claimed tested.
 Issue #29's picker change has a native regression; confirmation from the original
 reporter remains open. Issue #26's separate ultrawide concern remains unconfirmed.
 
