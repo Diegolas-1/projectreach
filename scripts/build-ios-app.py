@@ -312,6 +312,10 @@ def package(exe, out, work, target=TARGET, identity=None, provisioning=None, pro
         sign_built_app(app, identity, ent)
         return app
     entitlements = dict(ENTITLEMENTS)
+    if os.environ.get('HALOPAD_FREE_APPLE_ID') == '1':
+        # free Apple IDs can grant the memory limit but not extended addressing,
+        # and signing tools may drop both when one is refused
+        entitlements.pop('com.apple.developer.kernel.extended-virtual-addressing')
     if provisioning:
         shutil.copy2(provisioning, app / 'embedded.mobileprovision')
         granted = check_device_profile(provisioning, BUNDLE_ID, identity)
